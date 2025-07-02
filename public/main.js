@@ -8,7 +8,7 @@ class MainDashboard {
         this.currentTimeRange = 'today';
         this.customStartDate = null;
         this.customEndDate = null;
-        this.isFilterActive = false;
+        this.filterMode = false;
         this.currentMinersData = [];
         this.timezone = this.getUserTimezone();
         this.init();
@@ -28,6 +28,7 @@ class MainDashboard {
         this.setupTimeControls();
         this.setupModal();
         this.loadWatchedAddresses();
+        this.restoreUIState(); // 恢复UI状态
         this.updateChartTitle(); // 初始化图表标题
         await this.loadData();
         this.startAutoRefresh();
@@ -47,54 +48,36 @@ class MainDashboard {
                 this.renderMinersTable(this.currentMinersData);
             }, 300);
         });
-    }
 
-    // 设置时间控制
-    setupTimeControls() {
-        // 时间范围按钮
-        const timeButtons = document.querySelectorAll('.time-btn');
-        timeButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                timeButtons.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.currentTimeRange = e.target.dataset.range;
-                
-                const customDateRange = document.getElementById('customDateRange');
-                if (this.currentTimeRange === 'custom') {
-                    customDateRange.style.display = 'flex';
-                    this.setupCustomDateInputs();
+        // 时间范围选择变化
+        const timeRangeSelect = document.getElementById('timeRange');
+        if (timeRangeSelect) {
+            timeRangeSelect.addEventListener('change', () => {
+                const customDateInputs = document.getElementById('customDateInputs');
+                if (timeRangeSelect.value === 'custom') {
+                    customDateInputs.style.display = 'flex';
                 } else {
-                    customDateRange.style.display = 'none';
-                    this.loadMinersData();
-                    this.loadHashrateChart(); // 重新加载哈希率图表
-                }
-                
-                this.updateSectionTitle();
-                this.updateChartTitle(); // 更新图表标题
-            });
-        });
-
-        // 自定义日期应用按钮
-        const applyBtn = document.getElementById('applyDateRange');
-        if (applyBtn) {
-            applyBtn.addEventListener('click', () => {
-                const startDate = document.getElementById('startDate').value;
-                const endDate = document.getElementById('endDate').value;
-                
-                if (startDate && endDate) {
-                    this.customStartDate = startDate;
-                    this.customEndDate = endDate;
-                    
-                    // 保存自定义日期到localStorage
-                    this.saveCustomDateRange(startDate, endDate);
-                    
-                    this.loadMinersData();
-                    this.loadHashrateChart(); // 重新加载哈希率图表
-                } else {
-                    alert('请选择开始和结束日期');
+                    customDateInputs.style.display = 'none';
+                    this.updateChartTitle();
+                    this.saveUIState(); // 保存状态
+                    this.loadData();
                 }
             });
         }
+        
+        // 自定义日期变化
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        [startDateInput, endDateInput].forEach(input => {
+            input.addEventListener('change', () => {
+                if (startDateInput.value && endDateInput.value) {
+                    this.updateChartTitle();
+                    this.saveUIState(); // 保存状态
+                    this.loadData();
+                }
+            });
+        });
 
         // 设置和过滤按钮
         const settingsBtn = document.getElementById('settingsBtn');
@@ -109,46 +92,22 @@ class MainDashboard {
         }
     }
 
-    // 设置自定义日期输入默认值
-    setupCustomDateInputs() {
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
+    // 设置时间控制
+    setupTimeControls() {
+        // 恢复自定义日期显示状态
+        const timeRange = document.getElementById('timeRange');
+        const customDateInputs = document.getElementById('customDateInputs');
         
-        // 首先尝试从localStorage加载保存的日期
-        const savedDates = this.loadCustomDateRange();
+        if (timeRange && customDateInputs) {
+            // 根据恢复的状态显示/隐藏自定义日期输入
+            if (timeRange.value === 'custom') {
+                customDateInputs.style.display = 'flex';
+            } else {
+                customDateInputs.style.display = 'none';
+            }
+        }
         
-        if (savedDates.start && savedDates.end) {
-            startDateInput.value = savedDates.start;
-            endDateInput.value = savedDates.end;
-            this.customStartDate = savedDates.start;
-            this.customEndDate = savedDates.end;
-        } else {
-            // 如果没有保存的日期，使用今天作为默认值
-            const today = new Date().toISOString().split('T')[0];
-            if (!startDateInput.value) startDateInput.value = today;
-            if (!endDateInput.value) endDateInput.value = today;
-        }
-    }
-
-    // 保存自定义日期范围到localStorage
-    saveCustomDateRange(startDate, endDate) {
-        try {
-            const dateRange = { start: startDate, end: endDate };
-            localStorage.setItem('3dp-custom-date-range', JSON.stringify(dateRange));
-        } catch (e) {
-            console.error('保存自定义日期范围失败:', e);
-        }
-    }
-
-    // 从localStorage加载自定义日期范围
-    loadCustomDateRange() {
-        try {
-            const stored = localStorage.getItem('3dp-custom-date-range');
-            return stored ? JSON.parse(stored) : { start: null, end: null };
-        } catch (e) {
-            console.error('加载自定义日期范围失败:', e);
-            return { start: null, end: null };
-        }
+        // 已在setupEventListeners中处理时间范围变化事件
     }
 
     // 设置模态框
@@ -185,24 +144,17 @@ class MainDashboard {
         });
     }
 
-    // 更新段落标题
-    updateSectionTitle() {
-        const titleEl = document.getElementById('sectionTitle');
-        const titles = {
-            'today': '🏆 今日爆块排名',
-            'week': '🏆 本周爆块排名',
-            'month': '🏆 本月爆块排名',
-            'custom': '🏆 自定义时段爆块排名'
-        };
-        
-        if (titleEl) {
-            titleEl.textContent = titles[this.currentTimeRange] || '🏆 爆块排名';
-        }
-    }
-
     // 更新图表标题
     updateChartTitle() {
         const chartTitleEl = document.querySelector('.chart-container h3');
+        const timeRangeEl = document.getElementById('timeRange');
+        
+        if (!timeRangeEl) {
+            console.warn('timeRange元素未找到');
+            return;
+        }
+        
+        const timeRange = timeRangeEl.value;
         const titles = {
             'today': '📈 今日哈希率趋势',
             'week': '📈 本周哈希率趋势', 
@@ -211,16 +163,30 @@ class MainDashboard {
         };
         
         if (chartTitleEl) {
-            chartTitleEl.textContent = titles[this.currentTimeRange] || '📈 哈希率趋势';
+            chartTitleEl.textContent = titles[timeRange] || '📈 哈希率趋势';
         }
     }
 
     // 获取时间范围
     getTimeRange() {
+        const timeRangeEl = document.getElementById('timeRange');
+        if (!timeRangeEl) {
+            console.warn('timeRange元素未找到，使用默认值today');
+            // 返回今天的时间范围作为默认值
+            const now = new Date();
+            const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+            return {
+                start: Math.floor(startTime.getTime() / 1000),
+                end: Math.floor(endTime.getTime() / 1000)
+            };
+        }
+        
+        const timeRange = timeRangeEl.value;
         const now = new Date();
         let startTime, endTime;
 
-        switch (this.currentTimeRange) {
+        switch (timeRange) {
             case 'today':
                 startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                 endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -237,15 +203,20 @@ class MainDashboard {
                 endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
                 break;
             case 'custom':
-                if (this.customStartDate && this.customEndDate) {
-                    startTime = new Date(this.customStartDate + 'T00:00:00');
-                    endTime = new Date(this.customEndDate + 'T23:59:59');
+                const startDate = document.getElementById('startDate')?.value;
+                const endDate = document.getElementById('endDate')?.value;
+                if (startDate && endDate) {
+                    startTime = new Date(startDate + 'T00:00:00');
+                    endTime = new Date(endDate + 'T23:59:59');
                 } else {
-                    return this.getTimeRange.call({currentTimeRange: 'today'});
+                    // 如果没有自定义日期，回退到今天
+                    startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
                 }
                 break;
             default:
-                return this.getTimeRange.call({currentTimeRange: 'today'});
+                startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
         }
 
         return {
@@ -489,13 +460,13 @@ class MainDashboard {
         // 应用过滤
         const watchedAddresses = this.getWatchedAddresses();
         let displayMiners = miners;
-        if (this.isFilterActive) {
+        if (this.filterMode) {
             displayMiners = miners.filter(miner => 
                 watchedAddresses.some(w => w.address === miner.author)
             );
         }
 
-        if (displayMiners.length === 0 && this.isFilterActive) {
+        if (displayMiners.length === 0 && this.filterMode) {
             tbody.innerHTML = '<tr><td colspan="6" class="loading">🔍 没有找到关注的地址</td></tr>';
             statsFooter.style.display = 'none';
             return;
@@ -527,7 +498,7 @@ class MainDashboard {
                     <td>${miner.score}</td>
                     <td class="percentage-cell">${miner.share}</td>
                     <td>#${Number(miner.lastHeight).toLocaleString('zh-CN')}</td>
-                    <td>${miner.lastTime}</td>
+                    <td title="${this.formatFullTime(miner.lastTimestamp)}">${miner.lastTime}</td>
                 </tr>
             `;
         }).join('');
@@ -554,20 +525,21 @@ class MainDashboard {
         this.renderWatchedAddressList();
     }
 
-    // 切换过滤状态
+    // 切换过滤模式
     toggleFilter() {
-        this.isFilterActive = !this.isFilterActive;
+        this.filterMode = !this.filterMode;
         const filterBtn = document.getElementById('filterBtn');
         
-        if (this.isFilterActive) {
+        if (this.filterMode) {
             filterBtn.classList.add('active');
-            filterBtn.title = '显示全部地址';
+            filterBtn.innerHTML = '<i class="icon">🔍</i> 显示全部';
         } else {
             filterBtn.classList.remove('active');
-            filterBtn.title = '筛选关注地址';
+            filterBtn.innerHTML = '<i class="icon">🔍</i> 仅关注';
         }
         
-        this.renderMinersTable(this.currentMinersData);
+        this.saveUIState(); // 保存状态
+        this.loadData();
     }
 
     // 添加关注地址
@@ -603,7 +575,7 @@ class MainDashboard {
         this.renderWatchedAddressList();
         
         // 如果当前是过滤状态，重新渲染表格
-        if (this.isFilterActive) {
+        if (this.filterMode) {
             this.renderMinersTable(this.currentMinersData);
         }
     }
@@ -617,7 +589,7 @@ class MainDashboard {
             this.renderWatchedAddressList();
             
             // 如果当前是过滤状态，重新渲染表格
-            if (this.isFilterActive) {
+            if (this.filterMode) {
                 this.renderMinersTable(this.currentMinersData);
             }
         }
@@ -725,6 +697,76 @@ class MainDashboard {
     showError(message) {
         console.error(message);
         // 可以在这里添加更好的错误显示UI
+    }
+
+    // 格式化完整时间
+    formatFullTime(timestamp) {
+        const date = new Date(timestamp * 1000);
+        return date.toLocaleString('zh-CN');
+    }
+
+    // 恢复UI状态
+    restoreUIState() {
+        try {
+            const savedState = localStorage.getItem('minersPageState');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+                
+                // 恢复时间范围选择
+                const timeRangeEl = document.getElementById('timeRange');
+                if (state.timeRange && timeRangeEl) {
+                    timeRangeEl.value = state.timeRange;
+                }
+                
+                // 恢复自定义日期
+                const startDateEl = document.getElementById('startDate');
+                const endDateEl = document.getElementById('endDate');
+                if (state.startDate && state.endDate && startDateEl && endDateEl) {
+                    startDateEl.value = state.startDate;
+                    endDateEl.value = state.endDate;
+                }
+                
+                // 恢复过滤状态
+                if (state.filterMode !== undefined) {
+                    this.filterMode = state.filterMode;
+                    const filterBtn = document.getElementById('filterBtn');
+                    if (filterBtn) {
+                        if (this.filterMode) {
+                            filterBtn.classList.add('active');
+                            filterBtn.innerHTML = '<i class="icon">🔍</i> 显示全部';
+                        } else {
+                            filterBtn.classList.remove('active');
+                            filterBtn.innerHTML = '<i class="icon">🔍</i> 仅关注';
+                        }
+                    }
+                }
+                
+                console.log('UI状态已恢复');
+            }
+        } catch (error) {
+            console.error('恢复UI状态失败:', error);
+        }
+    }
+    
+    // 保存当前UI状态
+    saveUIState() {
+        try {
+            const timeRangeEl = document.getElementById('timeRange');
+            const startDateEl = document.getElementById('startDate');
+            const endDateEl = document.getElementById('endDate');
+            
+            const state = {
+                timeRange: timeRangeEl?.value || 'today',
+                startDate: startDateEl?.value || '',
+                endDate: endDateEl?.value || '',
+                filterMode: this.filterMode,
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem('minersPageState', JSON.stringify(state));
+        } catch (error) {
+            console.error('保存UI状态失败:', error);
+        }
     }
 }
 

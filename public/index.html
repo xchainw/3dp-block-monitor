@@ -47,27 +47,29 @@
         <section class="miners-section">
             <!-- 时间范围控制区域 -->
             <div class="time-controls">
-                <div class="time-buttons">
-                    <button class="time-btn active" data-range="today">今天</button>
-                    <button class="time-btn" data-range="week">本周</button>
-                    <button class="time-btn" data-range="month">本月</button>
-                    <button class="time-btn" data-range="custom">自定义</button>
+                <div class="time-select-container">
+                    <label for="timeRange">时间范围:</label>
+                    <select id="timeRange" class="time-select">
+                        <option value="today">今天</option>
+                        <option value="week">本周</option>
+                        <option value="month">本月</option>
+                        <option value="custom">自定义</option>
+                    </select>
                 </div>
                 
-                <div class="custom-date-range" id="customDateRange" style="display: none;">
+                <div class="custom-date-inputs" id="customDateInputs" style="display: none;">
                     <input type="date" id="startDate" class="date-input">
                     <span>至</span>
                     <input type="date" id="endDate" class="date-input">
-                    <button id="applyDateRange" class="apply-btn">应用</button>
                 </div>
             </div>
 
             <div class="section-header">
-                <h3 id="sectionTitle">🏆 今日爆块排名</h3>
+                <h3>🏆 爆块排名</h3>
                 <div class="section-controls">
                     <div class="control-buttons">
                         <button id="settingsBtn" class="control-btn" title="设置关注地址">⚙️ 设置</button>
-                        <button id="filterBtn" class="control-btn" title="筛选关注地址">🔍 筛选</button>
+                        <button id="filterBtn" class="control-btn" title="筛选关注地址"><i class="icon">🔍</i> 仅关注</button>
                         <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
                     </div>
                     <div class="refresh-info">

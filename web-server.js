@@ -311,6 +311,7 @@ app.get('/api/today-miners', (req, res) => {
                 share: totalBlocks > 0 ? ((row.score / totalBlocks) * 100).toFixed(2) + '%' : '0%',
                 lastHeight: row.last_height,
                 lastTime: formatTimeAgo(row.last_time),
+                lastTimestamp: row.last_time,
                 kyc: row.discord || row.display ? {
                     discord: row.discord,
                     display: row.display
@@ -395,6 +396,7 @@ app.get('/api/period-miners', (req, res) => {
                 share: totalBlocks > 0 ? ((row.score / totalBlocks) * 100).toFixed(2) + '%' : '0%',
                 lastHeight: row.last_height,
                 lastTime: formatTimeAgo(row.last_time),
+                lastTimestamp: row.last_time,
                 kyc: row.discord || row.display ? {
                     discord: row.discord,
                     display: row.display

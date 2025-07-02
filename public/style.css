@@ -154,20 +154,89 @@ main {
     max-height: 400px;
 }
 
-/* 时间控制区域 */
+/* 时间控制样式 */
 .time-controls {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px 20px;
     border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 25px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    flex-wrap: wrap;
 }
 
+.time-select-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.time-select-container label {
+    color: #b8c5ff;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.time-select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.time-select:focus {
+    outline: none;
+    border-color: #64b5f6;
+    box-shadow: 0 0 10px rgba(100, 181, 246, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.time-select option {
+    background: #1e3c72;
+    color: #ffffff;
+}
+
+.custom-date-inputs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.custom-date-inputs span {
+    color: #b8c5ff;
+    font-weight: 600;
+}
+
+.date-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    width: 150px;
+}
+
+.date-input:focus {
+    outline: none;
+    border-color: #64b5f6;
+    box-shadow: 0 0 10px rgba(100, 181, 246, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* 旧样式保留 - 为了兼容性 */
 .time-buttons {
     display: flex;
     gap: 10px;
-    margin-bottom: 15px;
     flex-wrap: wrap;
 }
 
@@ -175,7 +244,7 @@ main {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: #ffffff;
-    padding: 10px 20px;
+    padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -189,53 +258,39 @@ main {
 }
 
 .time-btn.active {
-    background: rgba(100, 181, 246, 0.3);
+    background: linear-gradient(45deg, #64b5f6, #42a5f5);
     border-color: #64b5f6;
-    color: #64b5f6;
-    box-shadow: 0 0 20px rgba(100, 181, 246, 0.3);
+    color: #ffffff;
+    box-shadow: 0 4px 15px rgba(100, 181, 246, 0.3);
 }
 
 .custom-date-range {
     display: flex;
     align-items: center;
     gap: 15px;
-    flex-wrap: wrap;
     margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.date-input {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #ffffff;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-}
-
-.date-input:focus {
-    outline: none;
-    border-color: #64b5f6;
-    background: rgba(255, 255, 255, 0.15);
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .apply-btn {
-    background: linear-gradient(45deg, #64b5f6, #42a5f5);
+    background: linear-gradient(45deg, #4caf50, #66bb6a);
     border: none;
     color: #ffffff;
     padding: 8px 16px;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
     transition: all 0.3s ease;
+    font-weight: 600;
+    font-size: 0.9rem;
 }
 
 .apply-btn:hover {
+    background: linear-gradient(45deg, #45a049, #5cb85c);
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(100, 181, 246, 0.4);
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
 }
 
 /* 表格部分 */
@@ -667,84 +722,111 @@ footer p {
 /* 中等屏幕适配 */
 @media (min-width: 768px) and (max-width: 1199px) {
     .container {
-        width: 95%;
-        padding: 0 15px;
+        padding: 0 20px;
+        max-width: 95%;
     }
-
+    
     .address-cell {
         font-size: 0.8rem;
     }
-
+    
     .hash-cell {
         font-size: 0.75rem;
     }
-
-    .time-buttons {
-        justify-content: center;
+    
+    .time-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
     }
-
-    .custom-date-range {
-        justify-content: center;
+    
+    .custom-date-inputs {
+        margin-left: 0;
+        flex-wrap: wrap;
     }
-
+    
+    .date-input {
+        width: 130px;
+    }
+    
     .input-group {
         flex-direction: column;
+        gap: 10px;
     }
-
+    
     .address-input, .alias-input {
-        min-width: unset;
+        width: 100%;
     }
 }
 
 /* 小屏幕适配 */
 @media (max-width: 767px) {
     .container {
-        width: 95%;
-        padding: 0 10px;
+        padding: 0 15px;
+        max-width: 100%;
     }
-
+    
     .address-cell {
         font-size: 0.75rem;
     }
-
+    
     .hash-cell {
         font-size: 0.7rem;
     }
-
-    .time-buttons {
+    
+    .time-controls {
         flex-direction: column;
         align-items: stretch;
+        gap: 15px;
+        padding: 15px;
     }
-
-    .time-btn {
+    
+    .time-select-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .time-select {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .custom-date-inputs {
+        margin-left: 0;
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .custom-date-inputs span {
         text-align: center;
     }
-
-    .custom-date-range {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 10px;
+    
+    .date-input {
+        width: 100%;
     }
-
+    
     .section-controls {
         flex-direction: column;
-        align-items: stretch;
         gap: 10px;
+        align-items: stretch;
     }
-
+    
     .control-buttons {
         justify-content: center;
     }
-
+    
     .modal-content {
-        width: 95%;
         margin: 10% auto;
+        width: 95%;
     }
-
+    
     .address-item {
         flex-direction: column;
         align-items: stretch;
         gap: 10px;
+        text-align: center;
     }
 }
 
