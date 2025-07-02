@@ -1,15 +1,21 @@
 {
   "rpcUrl": "wss://rpc.3dpass.org",
-  "startHeight": 0,
+  "startHeight": 1,
   "database": {
     "path": "./3dp_blocks.db",
-    "batchSize": 50
+    "batchSize": 150
+  },
+  "difficultyChanges": {
+    "firstChange": 370899,
+    "secondChange": 740500
   },
   "_comments": {
     "rpcUrl": "3DPass节点RPC地址，备用节点: wss://rpc2.3dpass.org",
-    "startHeight": "开始同步的区块高度，0表示从创世区块开始",
+    "startHeight": "开始同步的区块高度，1表示从初始区块开始",
     "database.path": "SQLite数据库文件路径",
     "database.batchSize": "批量处理区块数，内存不足时可减小到20-30",
+    "difficultyChanges.firstChange": "第一次难度调整的区块高度",
+    "difficultyChanges.secondChange": "第二次难度调整的区块高度",
     "performance_tips": "内存不足时: 减小batchSize | 高性能机器: 增加到100"
   }
 }

@@ -101,11 +101,11 @@ if (!config || Object.keys(config).length === 0) {
 }
 
 // 全局变量
-let startHeight = config['startHeight'] || 0;
+let startHeight = config['startHeight'] || 1;
 
 // 更新全局变量
 function updateVariables() {
-    startHeight = config['startHeight'] || 0;
+    startHeight = config['startHeight'] || 1;
 }
 
 // 初始化SQLite数据库
