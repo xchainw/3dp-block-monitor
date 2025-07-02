@@ -49,6 +49,11 @@ const argv = yargs(hideBin(process.argv))
         type: 'string',
         description: '手动补漏指定范围的区块，格式: start-end 例如: 15095-15250'
     })
+    .option('disable-kyc', {
+        type: 'boolean',
+        default: false,
+        description: '禁用KYC信息处理以提高同步速度'
+    })
     .help()
     .argv;
 
@@ -528,10 +533,12 @@ async function fillMissingBlocks(api, missingRanges) {
                 await saveBlockInfo(blockData);
                 
                 // 处理KYC信息
-                try {
-                    await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
-                } catch (kycError) {
-                    console.debug(`补漏时KYC处理失败 #${height}:`, kycError.message);
+                if (!argv['disable-kyc']) {
+                    try {
+                        await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
+                    } catch (kycError) {
+                        console.debug(`补漏时KYC处理失败 #${height}:`, kycError.message);
+                    }
                 }
                 
                 successBlocks.push(height);
@@ -576,7 +583,9 @@ async function processBlock(api, height) {
         await saveBlockInfo(blockData);
         
         // 处理KYC信息
-        await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
+        if (!argv['disable-kyc']) {
+            await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
+        }
         
         console.log(`💾 实时保存区块 #${height} 成功`);
         
@@ -651,15 +660,31 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
             if (allBlockData.length > 0) {
                 await batchSaveBlocksInfo(allBlockData);
                 
-                // 阶段4：批量处理KYC信息
-                console.log(`🆔 批量处理KYC信息: ${allBlockData.length} 个区块`);
-                for (const blockData of allBlockData) {
-                    try {
-                        await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
-                    } catch (error) {
-                        console.debug(`KYC处理失败 #${blockData.height}:`, error.message);
-                        // KYC处理失败不影响整体流程
+                // 阶段4：批量处理KYC信息（并发优化）
+                if (!argv['disable-kyc']) {
+                    console.log(`🆔 批量并发处理KYC信息: ${allBlockData.length} 个区块`);
+                    const kycStartTime = Date.now();
+                    
+                    // 并发处理KYC信息，每批最多10个并发
+                    const kycConcurrency = 10;
+                    for (let i = 0; i < allBlockData.length; i += kycConcurrency) {
+                        const batch = allBlockData.slice(i, i + kycConcurrency);
+                        const kycPromises = batch.map(blockData => 
+                            processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash)
+                                .catch(error => {
+                                    console.debug(`KYC处理失败 #${blockData.height}:`, error.message);
+                                    return null; // 不让单个失败影响整体
+                                })
+                        );
+                        
+                        // 等待当前批次完成
+                        await Promise.allSettled(kycPromises);
                     }
+                    
+                    const kycDuration = Date.now() - kycStartTime;
+                    console.log(`⚡ KYC并发处理完成: ${(kycDuration / 1000).toFixed(1)}秒`);
+                } else {
+                    console.log(`⏭️ 已禁用KYC处理，跳过 ${allBlockData.length} 个区块的KYC信息`);
                 }
             }
             
@@ -945,8 +970,12 @@ async function main() {
         await initDatabase();
         
         // 加载KYC缓存
-        console.log('📋 正在加载KYC缓存...');
-        await loadKycCacheFromDB();
+        if (!argv['disable-kyc']) {
+            console.log('📋 正在加载KYC缓存...');
+            await loadKycCacheFromDB();
+        } else {
+            console.log('⏭️ KYC功能已禁用，跳过KYC缓存加载');
+        }
         
         // 连接到3DPass节点
         const rpcUrl = config['rpcUrl'] || "wss://rpc.3dpass.org";
@@ -956,6 +985,18 @@ async function main() {
         const api = await ApiPromise.create({provider});
         
         console.log('✅ API连接成功');
+        
+        // 显示性能配置信息
+        console.log('\n⚡ 性能配置总览:');
+        if (argv['disable-kyc']) {
+            console.log('  🆔 KYC处理: ❌ 已禁用 (性能优先模式)');
+            console.log('  📈 预期速度: ~20-30秒/批次 (50个区块)');
+        } else {
+            console.log('  🆔 KYC处理: ✅ 已启用 (并发优化, 10个/批次)');
+            console.log('  📈 预期速度: ~30-40秒/批次 (50个区块)');
+            console.log('  💡 提示: 如需更快同步，可使用 --disable-kyc 参数');
+        }
+        console.log('');
 
         // 处理手动补漏指定范围
         if (argv['fill-range']) {
