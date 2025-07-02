@@ -17,6 +17,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // 数据库连接
 let db = null;
+let config = null; // 添加全局配置变量
 
 // 初始化数据库连接
 function initDatabase() {
@@ -29,7 +30,7 @@ function initDatabase() {
             return;
         }
         
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); // 加载配置到全局变量
         const dbPath = config.database?.path || './3dp_blocks.db';
         
         if (!fs.existsSync(dbPath)) {
@@ -42,10 +43,35 @@ function initDatabase() {
                 reject(err);
             } else {
                 console.log(`📊 数据库连接成功: ${dbPath}`);
+                console.log(`⚙️ 难度变更配置: 第一次变更区块 #${config.difficultyChanges?.firstChange || 370899}, 第二次变更区块 #${config.difficultyChanges?.secondChange || 740500}`);
                 resolve();
             }
         });
     });
+}
+
+// 工具函数：根据区块高度计算真实难度和哈希率
+function calculateDifficultyAndHashrate(rawDifficulty, blockHeight) {
+    const firstChange = config?.difficultyChanges?.firstChange || 370899;
+    const secondChange = config?.difficultyChanges?.secondChange || 740500;
+    
+    let realDifficulty, hashrate;
+    
+    if (blockHeight < firstChange) {
+        // [#1, #370,899): 真实难度 = 原始值，算力 = 原始值/60
+        realDifficulty = rawDifficulty;
+        hashrate = rawDifficulty / 60;
+    } else if (blockHeight < secondChange) {
+        // [#370,899, #740,500): 真实难度 = 原始值/(10^6)，算力 = 原始值/(1e6 * 60)
+        realDifficulty = rawDifficulty / 1e6;
+        hashrate = rawDifficulty / (1e6 * 60);
+    } else {
+        // [#740,500, ∞): 真实难度 = 原始值/(10^12)，算力 = 原始值/(1e12 * 60)
+        realDifficulty = rawDifficulty / 1e12;
+        hashrate = rawDifficulty / (1e12 * 60);
+    }
+    
+    return { realDifficulty, hashrate };
 }
 
 // 工具函数：格式化哈希率
@@ -96,37 +122,81 @@ function getDaysAgo(days) {
 
 // API: 获取最近24小时哈希率数据
 app.get('/api/hashrate/24h', (req, res) => {
-    const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 24 * 3600;
+    const { start, end } = req.query;
+    
+    let startTime, endTime;
+    
+    if (start && end) {
+        // 使用自定义时间范围
+        startTime = parseInt(start);
+        endTime = parseInt(end);
+        
+        if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+            res.status(400).json({ error: '无效的时间范围参数' });
+            return;
+        }
+    } else {
+        // 默认最近24小时
+        endTime = Math.floor(Date.now() / 1000);
+        startTime = endTime - 24 * 3600;
+    }
     
     const sql = `
         SELECT 
             timestamp,
-            difficult / 1e12 as difficulty_real
+            difficult,
+            id
         FROM p3d_block_info 
-        WHERE timestamp >= ? 
+        WHERE timestamp >= ? AND timestamp <= ?
         ORDER BY timestamp ASC
     `;
     
-    db.all(sql, [twentyFourHoursAgo], (err, rows) => {
+    db.all(sql, [startTime, endTime], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
         }
         
-        // 按小时分组计算平均哈希率
-        const hourlyData = {};
+        if (rows.length === 0) {
+            res.json([]);
+            return;
+        }
+        
+        // 根据时间范围动态调整分组间隔
+        const timeSpan = endTime - startTime;
+        let groupInterval;
+        
+        if (timeSpan <= 24 * 3600) {
+            // 24小时内，按小时分组
+            groupInterval = 3600;
+        } else if (timeSpan <= 7 * 24 * 3600) {
+            // 7天内，按4小时分组
+            groupInterval = 4 * 3600;
+        } else if (timeSpan <= 30 * 24 * 3600) {
+            // 30天内，按12小时分组
+            groupInterval = 12 * 3600;
+        } else {
+            // 超过30天，按天分组
+            groupInterval = 24 * 3600;
+        }
+        
+        // 按间隔分组计算平均哈希率（使用正确的难度计算）
+        const groupedData = {};
         rows.forEach(row => {
-            const hour = Math.floor(row.timestamp / 3600) * 3600;
-            if (!hourlyData[hour]) {
-                hourlyData[hour] = { total: 0, count: 0 };
+            const groupTime = Math.floor(row.timestamp / groupInterval) * groupInterval;
+            if (!groupedData[groupTime]) {
+                groupedData[groupTime] = { total: 0, count: 0 };
             }
-            hourlyData[hour].total += row.difficulty_real / 60; // hashrate = difficulty / 60
-            hourlyData[hour].count += 1;
+            
+            // 使用新的难度计算函数来计算正确的哈希率
+            const { hashrate } = calculateDifficultyAndHashrate(row.difficult, row.id);
+            groupedData[groupTime].total += hashrate;
+            groupedData[groupTime].count += 1;
         });
         
-        const result = Object.keys(hourlyData).map(hour => ({
-            timestamp: parseInt(hour),
-            hashrate: hourlyData[hour].total / hourlyData[hour].count
+        const result = Object.keys(groupedData).map(time => ({
+            timestamp: parseInt(time),
+            hashrate: groupedData[time].total / groupedData[time].count
         })).sort((a, b) => a.timestamp - b.timestamp);
         
         res.json(result);
@@ -135,46 +205,48 @@ app.get('/api/hashrate/24h', (req, res) => {
 
 // API: 获取当前状态信息
 app.get('/api/current-stats', (req, res) => {
-    const todayStart = getTodayStart();
-    
     // 获取最新区块信息
     const latestSql = `
         SELECT 
-            difficult / 1e12 as current_difficulty,
-            reward_amount / 1e12 as block_reward
+            difficult,
+            reward_amount / 1e12 as block_reward,
+            id as latest_height,
+            timestamp as latest_timestamp
         FROM p3d_block_info 
         ORDER BY id DESC 
         LIMIT 1
     `;
     
-    // 获取今天爆块人数
-    const todayMinersSQL = `
-        SELECT COUNT(DISTINCT author) as today_miners
-        FROM p3d_block_info 
-        WHERE timestamp >= ?
-    `;
-    
     db.get(latestSql, (err, latest) => {
         if (err) {
+            console.error('获取最新区块信息失败:', err);
             res.status(500).json({ error: err.message });
             return;
         }
         
-        db.get(todayMinersSQL, [todayStart], (err, todayData) => {
-            if (err) {
-                res.status(500).json({ error: err.message });
-                return;
-            }
-            
-            const currentHashrate = latest ? latest.current_difficulty / 60 : 0;
-            
+        if (!latest) {
+            console.warn('数据库中没有找到任何区块数据');
             res.json({
-                currentDifficulty: latest ? latest.current_difficulty : 0,
-                currentHashrate: currentHashrate,
-                currentHashrateFormatted: formatHashrate(currentHashrate),
-                blockReward: latest ? latest.block_reward : 0,
-                todayMiners: todayData ? todayData.today_miners : 0
+                currentDifficulty: 0,
+                currentHashrate: 0,
+                currentHashrateFormatted: '0.00 H/s',
+                blockReward: 0
             });
+            return;
+        }
+        
+        // 使用新的难度计算函数
+        const { realDifficulty, hashrate } = calculateDifficultyAndHashrate(latest.difficult, latest.latest_height);
+        
+        console.log(`📊 最新区块统计 - 高度: #${latest.latest_height}, 原始难度: ${latest.difficult}, 真实难度: ${realDifficulty}, 哈希率: ${formatHashrate(hashrate)}, 奖励: ${latest.block_reward}`);
+        
+        res.json({
+            currentDifficulty: realDifficulty,
+            currentHashrate: hashrate,
+            currentHashrateFormatted: formatHashrate(hashrate),
+            blockReward: latest.block_reward,
+            latestHeight: latest.latest_height,
+            latestTimestamp: latest.latest_timestamp
         });
     });
 });
@@ -211,6 +283,70 @@ app.get('/api/today-miners', (req, res) => {
         const totalBlocks = totalData.total_blocks;
         
         db.all(sql, [todayStart], (err, rows) => {
+            if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+            }
+            
+            const result = rows.map((row, index) => ({
+                rank: index + 1,
+                author: row.author,
+                score: row.score,
+                share: totalBlocks > 0 ? ((row.score / totalBlocks) * 100).toFixed(2) + '%' : '0%',
+                lastHeight: row.last_height,
+                lastTime: formatTimeAgo(row.last_time)
+            }));
+            
+            res.json(result);
+        });
+    });
+});
+
+// API: 获取指定时间范围的爆块排名
+app.get('/api/period-miners', (req, res) => {
+    const { start, end } = req.query;
+    
+    if (!start || !end) {
+        res.status(400).json({ error: '缺少start或end参数' });
+        return;
+    }
+    
+    const startTime = parseInt(start);
+    const endTime = parseInt(end);
+    
+    if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+        res.status(400).json({ error: '无效的时间范围参数' });
+        return;
+    }
+    
+    const sql = `
+        SELECT 
+            author,
+            COUNT(*) as score,
+            MAX(id) as last_height,
+            MAX(timestamp) as last_time
+        FROM p3d_block_info 
+        WHERE timestamp >= ? AND timestamp <= ?
+        GROUP BY author 
+        ORDER BY score DESC, last_time DESC
+    `;
+    
+    // 获取指定时间范围总爆块数
+    const totalSql = `
+        SELECT COUNT(*) as total_blocks
+        FROM p3d_block_info 
+        WHERE timestamp >= ? AND timestamp <= ?
+    `;
+    
+    db.get(totalSql, [startTime, endTime], (err, totalData) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        const totalBlocks = totalData.total_blocks;
+        
+        db.all(sql, [startTime, endTime], (err, rows) => {
             if (err) {
                 res.status(500).json({ error: err.message });
                 return;
@@ -372,6 +508,60 @@ app.get('/api/miner/:address/blocks', (req, res) => {
             hash: row.blockhash,
             date: new Date(row.timestamp * 1000).toLocaleString('zh-CN')
         }));
+        
+        res.json(result);
+    });
+});
+
+// API: 批量获取KYC信息
+app.post('/api/kyc-info', (req, res) => {
+    const { addresses } = req.body;
+    
+    if (!addresses || !Array.isArray(addresses) || addresses.length === 0) {
+        res.status(400).json({ error: '缺少有效的addresses参数' });
+        return;
+    }
+    
+    // 限制单次查询的地址数量，避免性能问题
+    if (addresses.length > 100) {
+        res.status(400).json({ error: '单次查询地址数量不能超过100个' });
+        return;
+    }
+    
+    // 构建SQL查询，获取每个地址的最新KYC信息
+    const placeholders = addresses.map(() => '?').join(',');
+    const sql = `
+        SELECT 
+            k1.author,
+            k1.discord,
+            k1.display
+        FROM p3d_kyc_info k1
+        WHERE k1.author IN (${placeholders})
+        AND k1.id = (
+            SELECT MAX(k2.id) 
+            FROM p3d_kyc_info k2 
+            WHERE k2.author = k1.author
+        )
+        AND (k1.discord IS NOT NULL AND k1.discord != '' 
+             OR k1.display IS NOT NULL AND k1.display != '')
+        ORDER BY k1.author
+    `;
+    
+    db.all(sql, addresses, (err, rows) => {
+        if (err) {
+            console.error('查询KYC信息失败:', err);
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        // 转换为对象格式，便于前端使用
+        const result = {};
+        rows.forEach(row => {
+            result[row.author] = {
+                discord: row.discord,
+                display: row.display
+            };
+        });
         
         res.json(result);
     });

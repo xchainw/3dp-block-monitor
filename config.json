@@ -4,5 +4,9 @@
   "database": {
     "path": "./3dp_blocks.db",
     "batchSize": 50
+  },
+  "difficultyChanges": {
+    "firstChange": 370899,
+    "secondChange": 740500
   }
 }

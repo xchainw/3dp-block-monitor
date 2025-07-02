@@ -32,24 +32,47 @@
                     <p class="stat-value" id="blockReward">-</p>
                 </div>
                 <div class="stat-card">
-                    <h3>今日矿工数</h3>
-                    <p class="stat-value" id="todayMiners">-</p>
+                    <h3>当前时段矿工数</h3>
+                    <p class="stat-value" id="periodMiners">-</p>
                 </div>
             </div>
 
             <div class="chart-container">
-                <h3>📈 最近24小时哈希率趋势</h3>
+                <h3>📈 哈希率趋势</h3>
                 <canvas id="hashrateChart"></canvas>
             </div>
         </section>
 
-        <!-- 下半部分：今日爆块排名 -->
+        <!-- 下半部分：爆块排名 -->
         <section class="miners-section">
+            <!-- 时间范围控制区域 -->
+            <div class="time-controls">
+                <div class="time-buttons">
+                    <button class="time-btn active" data-range="today">今天</button>
+                    <button class="time-btn" data-range="week">本周</button>
+                    <button class="time-btn" data-range="month">本月</button>
+                    <button class="time-btn" data-range="custom">自定义</button>
+                </div>
+                
+                <div class="custom-date-range" id="customDateRange" style="display: none;">
+                    <input type="date" id="startDate" class="date-input">
+                    <span>至</span>
+                    <input type="date" id="endDate" class="date-input">
+                    <button id="applyDateRange" class="apply-btn">应用</button>
+                </div>
+            </div>
+
             <div class="section-header">
-                <h3>🏆 今日爆块排名</h3>
-                <div class="refresh-info">
-                    <span id="lastUpdate">最后更新: -</span>
-                    <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+                <h3 id="sectionTitle">🏆 今日爆块排名</h3>
+                <div class="section-controls">
+                    <div class="control-buttons">
+                        <button id="settingsBtn" class="control-btn" title="设置关注地址">⚙️ 设置</button>
+                        <button id="filterBtn" class="control-btn" title="筛选关注地址">🔍 筛选</button>
+                        <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+                    </div>
+                    <div class="refresh-info">
+                        <span id="lastUpdate">最后更新: -</span>
+                    </div>
                 </div>
             </div>
 
@@ -70,10 +93,44 @@
                             <td colspan="6" class="loading">📊 加载中...</td>
                         </tr>
                     </tbody>
+                    <tfoot id="statsFooter" style="display: none;">
+                        <tr class="stats-row">
+                            <td colspan="2"><strong>统计合计</strong></td>
+                            <td><strong id="totalBlocks">-</strong></td>
+                            <td><strong id="totalPercentage">-</strong></td>
+                            <td colspan="2">-</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </section>
     </main>
+
+    <!-- 设置关注地址的模态框 -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ 关注地址设置</h3>
+                <span class="close" id="closeSettings">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="add-address-section">
+                    <h4>添加关注地址</h4>
+                    <div class="input-group">
+                        <input type="text" id="newAddress" placeholder="输入地址" class="address-input">
+                        <input type="text" id="newAlias" placeholder="输入别名（可选）" class="alias-input">
+                        <button id="addAddress" class="add-btn">添加</button>
+                    </div>
+                </div>
+                <div class="address-list-section">
+                    <h4>已关注地址</h4>
+                    <div id="watchedAddressList" class="address-list">
+                        <p class="empty-message">暂无关注地址</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <footer>
         <div class="container">
