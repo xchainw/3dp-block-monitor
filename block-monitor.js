@@ -59,6 +59,14 @@ const configFilePath = path.resolve(__dirname, configFile);
 // 数据库实例
 let db = null;
 
+// 内存中的KYC信息缓存 - 结构: { author: { discord: "xxx", display: "xxx" } }
+// 缓存会反映账号的实时KYC状态，包括清空的情况（null值）
+// p3d_kyc_info表记录所有KYC状态变化，包括首次出现和清空事件
+let kycCache = new Map();
+
+// 已在p3d_kyc_info表中有记录的账号集合
+let recordedAccounts = new Set();
+
 // 读取配置文件的函数
 function loadConfig() {
     try {
@@ -129,11 +137,135 @@ function initDatabase() {
                     db.run(`CREATE INDEX IF NOT EXISTS idx_author ON p3d_block_info(author)`);
                     db.run(`CREATE INDEX IF NOT EXISTS idx_blockhash ON p3d_block_info(blockhash)`);
                     
+                    // 创建p3d_kyc_info表 - KYC历史记录表
+                    db.run(`CREATE TABLE IF NOT EXISTS p3d_kyc_info (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        block_height INTEGER NOT NULL,
+                        author VARCHAR(50) NOT NULL,
+                        authorPublicKey VARCHAR(66),
+                        discord VARCHAR(50),
+                        display VARCHAR(50),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )`, (err) => {
+                        if (err) {
+                            console.error('创建KYC表失败:', err);
+                            reject(err);
+                        } else {
+                            console.log('p3d_kyc_info表已就绪');
+                            
+                            // 创建KYC表索引
+                            db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_author ON p3d_kyc_info(author)`);
+                            db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_block_height ON p3d_kyc_info(block_height)`);
+                            
+                            resolve();
+                        }
+                    });
+                }
+            });
+        });
+    });
+}
+
+// 保存KYC信息到数据库（记录所有KYC状态变化，包括首次出现和清空事件）
+function saveKycInfo(blockHeight, author, authorPublicKey, discord, display) {
+    return new Promise((resolve, reject) => {
+        const sql = `INSERT INTO p3d_kyc_info 
+            (block_height, author, authorPublicKey, discord, display) 
+            VALUES (?, ?, ?, ?, ?)`;
+        
+        db.run(sql, [
+            blockHeight,
+            author,
+            authorPublicKey,
+            discord,
+            display
+        ], function(err) {
+            if (err) {
+                console.error(`保存KYC信息失败 (区块 #${blockHeight}, 作者 ${author}):`, err);
+                reject(err);
+            } else {
+                console.log(`💾 保存KYC信息成功: 区块 #${blockHeight}, 作者 ${author}`);
+                // 将账号添加到已记录集合中
+                recordedAccounts.add(author);
+                resolve(this.lastID);
+            }
+        });
+    });
+}
+
+// 从数据库加载最新的KYC信息到内存缓存
+function loadKycCacheFromDB() {
+    return new Promise((resolve, reject) => {
+        // 首先加载所有已记录的账号
+        const accountsSql = `SELECT DISTINCT author FROM p3d_kyc_info`;
+        
+        db.all(accountsSql, [], (err, accountRows) => {
+            if (err) {
+                console.error('加载已记录账号失败:', err);
+                reject(err);
+                return;
+            }
+            
+            // 填充已记录账号集合
+            recordedAccounts.clear();
+            accountRows.forEach(row => {
+                recordedAccounts.add(row.author);
+            });
+            
+            // 然后加载最新的KYC信息
+            const kycSql = `
+                SELECT author, discord, display
+                FROM p3d_kyc_info k1
+                WHERE k1.id = (
+                    SELECT MAX(k2.id) 
+                    FROM p3d_kyc_info k2 
+                    WHERE k2.author = k1.author
+                )
+                ORDER BY author
+            `;
+            
+            db.all(kycSql, [], (err, rows) => {
+                if (err) {
+                    console.error('加载KYC缓存失败:', err);
+                    reject(err);
+                } else {
+                    kycCache.clear();
+                    rows.forEach(row => {
+                        kycCache.set(row.author, {
+                            discord: row.discord,
+                            display: row.display
+                        });
+                    });
+                    console.log(`📋 加载KYC缓存完成: ${rows.length} 个账号的KYC信息`);
+                    console.log(`📋 已记录账号数量: ${recordedAccounts.size} 个`);
                     resolve();
                 }
             });
         });
     });
+}
+
+// 检查KYC信息是否需要记录（首次出现或状态变化）
+function shouldRecordKyc(author, newDiscord, newDisplay) {
+    // 如果账号从未记录过，则需要记录（无论KYC是否为空）
+    if (!recordedAccounts.has(author)) {
+        return true;
+    }
+    
+    const cached = kycCache.get(author);
+    
+    // 如果缓存中没有此账号信息，但已记录过（数据异常情况），则需要记录
+    if (!cached) {
+        return true;
+    }
+    
+    // 比较discord和display是否有变化
+    return cached.discord !== newDiscord || cached.display !== newDisplay;
+}
+
+// 更新内存中的KYC缓存
+function updateKycCache(author, discord, display) {
+    kycCache.set(author, { discord, display });
 }
 
 // 保存区块信息到数据库（带去重）
@@ -394,6 +526,14 @@ async function fillMissingBlocks(api, missingRanges) {
             try {
                 const blockData = await fetchBlockDataWithRetry(api, height);
                 await saveBlockInfo(blockData);
+                
+                // 处理KYC信息
+                try {
+                    await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
+                } catch (kycError) {
+                    console.debug(`补漏时KYC处理失败 #${height}:`, kycError.message);
+                }
+                
                 successBlocks.push(height);
                 totalFilled++;
                 
@@ -434,6 +574,9 @@ async function processBlock(api, height) {
         
         // 立即保存到数据库
         await saveBlockInfo(blockData);
+        
+        // 处理KYC信息
+        await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
         
         console.log(`💾 实时保存区块 #${height} 成功`);
         
@@ -507,6 +650,17 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
             // 阶段3：批量写入数据库
             if (allBlockData.length > 0) {
                 await batchSaveBlocksInfo(allBlockData);
+                
+                // 阶段4：批量处理KYC信息
+                console.log(`🆔 批量处理KYC信息: ${allBlockData.length} 个区块`);
+                for (const blockData of allBlockData) {
+                    try {
+                        await processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash);
+                    } catch (error) {
+                        console.debug(`KYC处理失败 #${blockData.height}:`, error.message);
+                        // KYC处理失败不影响整体流程
+                    }
+                }
             }
             
             // 🧠 内存监控（处理后）
@@ -605,6 +759,51 @@ async function fetchBlockData(api, height) {
     } catch (error) {
         console.error(`获取区块 #${height} 数据失败:`, error);
         throw error;
+    }
+}
+
+// 处理KYC信息变化检查和保存
+async function processKycInfo(api, blockHeight, author, authorPublicKey, blockHash) {
+    try {
+        // 获取KYC信息
+        let discord = null;
+        let display = null;
+        
+        // 创建历史 API 实例
+        const apiAt = await api.at(blockHash);
+        const identity = await apiAt.query.identity.identityOf(author.toString());
+        
+        // 检查是否有结果
+        if (identity.isSome) {
+            const info = identity.unwrap().info;
+            const additional = info.additional.toHuman();
+
+            // 检查 discord 信息是否存在且格式正确
+            if (additional && additional[0] && additional[0][1] && additional[0][1]["Raw"]) {
+                discord = additional[0][1]["Raw"];
+            }
+
+            // 检查 display 信息是否存在且格式正确
+            if (info.display.toHuman() && info.display.toHuman()["Raw"]) {
+                display = info.display.toHuman()["Raw"];
+            }
+        }
+        
+        // 检查是否需要记录KYC信息（首次出现或状态变化）
+        if (shouldRecordKyc(author, discord, display)) {
+            // 保存到数据库（记录所有KYC状态变化）
+            await saveKycInfo(blockHeight, author, authorPublicKey, discord, display);
+            
+            const isFirstRecord = !recordedAccounts.has(author);
+            const statusMsg = isFirstRecord ? '首次记录' : 'KYC变化';
+            console.log(`🆔 ${statusMsg}: 区块 #${blockHeight}, 作者 ${author}, discord[${discord || 'null'}]|display[${display || 'null'}]`);
+        }
+        
+        // 始终更新内存缓存（包括清空的情况）
+        updateKycCache(author, discord, display);
+        
+    } catch (e) {
+        console.debug(`处理KYC信息失败 #${blockHeight}:`, e.message);
     }
 }
 
@@ -744,6 +943,10 @@ async function main() {
         
         // 初始化数据库
         await initDatabase();
+        
+        // 加载KYC缓存
+        console.log('📋 正在加载KYC缓存...');
+        await loadKycCacheFromDB();
         
         // 连接到3DPass节点
         const rpcUrl = config['rpcUrl'] || "wss://rpc.3dpass.org";
