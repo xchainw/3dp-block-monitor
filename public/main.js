@@ -475,70 +475,6 @@ class MainDashboard {
         }
     }
 
-    // 获取KYC信息（支持大批量地址分批查询）
-    async getKycInfo(addresses) {
-        if (!addresses || addresses.length === 0) {
-            return {};
-        }
-
-        try {
-            // 如果地址数量小于等于100，直接查询
-            if (addresses.length <= 100) {
-                return await this.fetchKycBatch(addresses);
-            }
-
-            // 地址数量超过100，分批查询
-            console.log(`📋 地址数量 ${addresses.length} 超过100，开始分批查询KYC信息...`);
-            
-            const batchSize = 100;
-            const allKycInfo = {};
-            
-            // 分批处理
-            for (let i = 0; i < addresses.length; i += batchSize) {
-                const batch = addresses.slice(i, i + batchSize);
-                console.log(`🔄 查询KYC批次 ${Math.floor(i/batchSize) + 1}/${Math.ceil(addresses.length/batchSize)}: ${batch.length} 个地址`);
-                
-                try {
-                    const batchResult = await this.fetchKycBatch(batch);
-                    Object.assign(allKycInfo, batchResult);
-                    
-                    // 批次间稍作延迟，避免服务器压力
-                    if (i + batchSize < addresses.length) {
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                } catch (batchError) {
-                    console.warn(`⚠️ KYC批次查询失败:`, batchError);
-                    // 继续处理下一批次，不要因为单个批次失败而停止
-                }
-            }
-            
-            console.log(`✅ KYC分批查询完成，获取到 ${Object.keys(allKycInfo).length} 个地址的KYC信息`);
-            return allKycInfo;
-            
-        } catch (error) {
-            console.debug('获取KYC信息失败:', error);
-            return {};
-        }
-    }
-
-    // 单批次KYC查询
-    async fetchKycBatch(addresses) {
-        const response = await fetch('/api/kyc-info', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ addresses })
-        });
-        
-        if (response.ok) {
-            return await response.json();
-        } else {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-    }
-
     // 渲染矿工排名表格
     async renderMinersTable(miners) {
         const tbody = document.getElementById('minersTableBody');
@@ -565,66 +501,9 @@ class MainDashboard {
             return;
         }
 
-        // 先渲染基础表格（不包含KYC信息）
-        this.renderBasicTable(displayMiners);
-        this.updateStats(displayMiners, miners);
-        statsFooter.style.display = 'table-footer-group';
-
-        // 异步获取并更新KYC信息
-        const addresses = displayMiners.map(m => m.author);
-        
-        if (addresses.length > 100) {
-            // 显示KYC加载提示
-            console.log(`🔄 正在查询 ${addresses.length} 个地址的KYC信息，请稍候...`);
-        }
-        
-        try {
-            const kycInfo = await this.getKycInfo(addresses);
-            // 重新渲染表格，这次包含KYC信息
-            this.renderTableWithKyc(displayMiners, watchedAddresses, kycInfo);
-        } catch (error) {
-            console.warn('KYC信息查询失败，使用基础表格:', error);
-            // 如果KYC查询失败，保持基础表格显示
-        }
-    }
-
-    // 渲染基础表格（不包含KYC信息）
-    renderBasicTable(displayMiners) {
-        const tbody = document.getElementById('minersTableBody');
-        const watchedAddresses = this.getWatchedAddresses();
-        
+        // 直接渲染表格（KYC信息已包含在数据中）
         tbody.innerHTML = displayMiners.map(miner => {
             const watchedAddress = watchedAddresses.find(w => w.address === miner.author);
-            
-            // 构建地址显示内容（只包含别名，不包含KYC）
-            let addressContent = `<span class="address-text" title="${miner.author}">${this.truncateAddress(miner.author)}</span>`;
-            
-            // 添加别名标签
-            if (watchedAddress && watchedAddress.alias) {
-                addressContent += `<a href="https://3dpscan.xyz/#/accounts/${miner.author}?sub=identity_timeline&tab=identity" 
-                    target="_blank" class="tag alias-tag" title="别名" onclick="event.stopPropagation()">${watchedAddress.alias}</a>`;
-            }
-
-            return `
-                <tr>
-                    <td class="rank-cell rank-${miner.rank <= 3 ? miner.rank : 'other'}">#${miner.rank}</td>
-                    <td class="address-cell" onclick="window.location.href='/miner/${encodeURIComponent(miner.author)}'">${addressContent}</td>
-                    <td>${miner.score}</td>
-                    <td class="percentage-cell">${miner.share}</td>
-                    <td>#${Number(miner.lastHeight).toLocaleString('zh-CN')}</td>
-                    <td>${miner.lastTime}</td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    // 渲染包含KYC信息的完整表格
-    renderTableWithKyc(displayMiners, watchedAddresses, kycInfo) {
-        const tbody = document.getElementById('minersTableBody');
-        
-        tbody.innerHTML = displayMiners.map(miner => {
-            const watchedAddress = watchedAddresses.find(w => w.address === miner.author);
-            const kyc = kycInfo[miner.author];
             
             // 构建地址显示内容
             let addressContent = `<span class="address-text" title="${miner.author}">${this.truncateAddress(miner.author)}</span>`;
@@ -635,10 +514,10 @@ class MainDashboard {
                     target="_blank" class="tag alias-tag" title="别名" onclick="event.stopPropagation()">${watchedAddress.alias}</a>`;
             }
             
-            // 添加KYC标签
-            if (kyc && kyc.display) {
+            // 添加KYC标签（直接使用后端返回的KYC数据）
+            if (miner.kyc && miner.kyc.display) {
                 addressContent += `<a href="https://3dpscan.xyz/#/accounts/${miner.author}?sub=identity_timeline&tab=identity" 
-                    target="_blank" class="tag kyc-tag" title="KYC认证" onclick="event.stopPropagation()">${kyc.display}</a>`;
+                    target="_blank" class="tag kyc-tag" title="KYC认证" onclick="event.stopPropagation()">${miner.kyc.display}</a>`;
             }
 
             return `
@@ -652,6 +531,10 @@ class MainDashboard {
                 </tr>
             `;
         }).join('');
+
+        // 更新统计信息
+        this.updateStats(displayMiners, miners);
+        statsFooter.style.display = 'table-footer-group';
     }
 
     // 更新统计信息

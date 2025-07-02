@@ -238,7 +238,7 @@ app.get('/api/current-stats', (req, res) => {
         // 使用新的难度计算函数
         const { realDifficulty, hashrate } = calculateDifficultyAndHashrate(latest.difficult, latest.latest_height);
         
-        console.log(`📊 最新区块统计 - 高度: #${latest.latest_height}, 原始难度: ${latest.difficult}, 真实难度: ${realDifficulty}, 哈希率: ${formatHashrate(hashrate)}, 奖励: ${latest.block_reward}`);
+        console.debug(`📊 最新区块统计 - 高度: #${latest.latest_height}, 原始难度: ${latest.difficult}, 真实难度: ${realDifficulty}, 哈希率: ${formatHashrate(hashrate)}, 奖励: ${latest.block_reward}`);
         
         res.json({
             currentDifficulty: realDifficulty,
@@ -257,13 +257,29 @@ app.get('/api/today-miners', (req, res) => {
     
     const sql = `
         SELECT 
-            author,
+            b.author,
             COUNT(*) as score,
-            MAX(id) as last_height,
-            MAX(timestamp) as last_time
-        FROM p3d_block_info 
-        WHERE timestamp >= ?
-        GROUP BY author 
+            MAX(b.id) as last_height,
+            MAX(b.timestamp) as last_time,
+            k.discord,
+            k.display
+        FROM p3d_block_info b
+        LEFT JOIN (
+            SELECT 
+                k1.author,
+                k1.discord,
+                k1.display
+            FROM p3d_kyc_info k1
+            WHERE k1.id = (
+                SELECT MAX(k2.id) 
+                FROM p3d_kyc_info k2 
+                WHERE k2.author = k1.author
+            )
+            AND (k1.discord IS NOT NULL AND k1.discord != '' 
+                 OR k1.display IS NOT NULL AND k1.display != '')
+        ) k ON b.author = k.author
+        WHERE b.timestamp >= ?
+        GROUP BY b.author, k.discord, k.display
         ORDER BY score DESC, last_time DESC
     `;
     
@@ -294,7 +310,11 @@ app.get('/api/today-miners', (req, res) => {
                 score: row.score,
                 share: totalBlocks > 0 ? ((row.score / totalBlocks) * 100).toFixed(2) + '%' : '0%',
                 lastHeight: row.last_height,
-                lastTime: formatTimeAgo(row.last_time)
+                lastTime: formatTimeAgo(row.last_time),
+                kyc: row.discord || row.display ? {
+                    discord: row.discord,
+                    display: row.display
+                } : null
             }));
             
             res.json(result);
@@ -321,13 +341,29 @@ app.get('/api/period-miners', (req, res) => {
     
     const sql = `
         SELECT 
-            author,
+            b.author,
             COUNT(*) as score,
-            MAX(id) as last_height,
-            MAX(timestamp) as last_time
-        FROM p3d_block_info 
-        WHERE timestamp >= ? AND timestamp <= ?
-        GROUP BY author 
+            MAX(b.id) as last_height,
+            MAX(b.timestamp) as last_time,
+            k.discord,
+            k.display
+        FROM p3d_block_info b
+        LEFT JOIN (
+            SELECT 
+                k1.author,
+                k1.discord,
+                k1.display
+            FROM p3d_kyc_info k1
+            WHERE k1.id = (
+                SELECT MAX(k2.id) 
+                FROM p3d_kyc_info k2 
+                WHERE k2.author = k1.author
+            )
+            AND (k1.discord IS NOT NULL AND k1.discord != '' 
+                 OR k1.display IS NOT NULL AND k1.display != '')
+        ) k ON b.author = k.author
+        WHERE b.timestamp >= ? AND b.timestamp <= ?
+        GROUP BY b.author, k.discord, k.display
         ORDER BY score DESC, last_time DESC
     `;
     
@@ -358,7 +394,11 @@ app.get('/api/period-miners', (req, res) => {
                 score: row.score,
                 share: totalBlocks > 0 ? ((row.score / totalBlocks) * 100).toFixed(2) + '%' : '0%',
                 lastHeight: row.last_height,
-                lastTime: formatTimeAgo(row.last_time)
+                lastTime: formatTimeAgo(row.last_time),
+                kyc: row.discord || row.display ? {
+                    discord: row.discord,
+                    display: row.display
+                } : null
             }));
             
             res.json(result);
@@ -508,60 +548,6 @@ app.get('/api/miner/:address/blocks', (req, res) => {
             hash: row.blockhash,
             date: new Date(row.timestamp * 1000).toLocaleString('zh-CN')
         }));
-        
-        res.json(result);
-    });
-});
-
-// API: 批量获取KYC信息
-app.post('/api/kyc-info', (req, res) => {
-    const { addresses } = req.body;
-    
-    if (!addresses || !Array.isArray(addresses) || addresses.length === 0) {
-        res.status(400).json({ error: '缺少有效的addresses参数' });
-        return;
-    }
-    
-    // 限制单次查询的地址数量，避免性能问题
-    if (addresses.length > 100) {
-        res.status(400).json({ error: '单次查询地址数量不能超过100个' });
-        return;
-    }
-    
-    // 构建SQL查询，获取每个地址的最新KYC信息
-    const placeholders = addresses.map(() => '?').join(',');
-    const sql = `
-        SELECT 
-            k1.author,
-            k1.discord,
-            k1.display
-        FROM p3d_kyc_info k1
-        WHERE k1.author IN (${placeholders})
-        AND k1.id = (
-            SELECT MAX(k2.id) 
-            FROM p3d_kyc_info k2 
-            WHERE k2.author = k1.author
-        )
-        AND (k1.discord IS NOT NULL AND k1.discord != '' 
-             OR k1.display IS NOT NULL AND k1.display != '')
-        ORDER BY k1.author
-    `;
-    
-    db.all(sql, addresses, (err, rows) => {
-        if (err) {
-            console.error('查询KYC信息失败:', err);
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        // 转换为对象格式，便于前端使用
-        const result = {};
-        rows.forEach(row => {
-            result[row.author] = {
-                discord: row.discord,
-                display: row.display
-            };
-        });
         
         res.json(result);
     });
