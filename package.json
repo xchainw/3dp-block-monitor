@@ -1,0 +1,45 @@
+{
+  "name": "3dp-block-monitor",
+  "version": "1.0.0",
+  "description": "3DPass区块链数据收集系统，支持历史数据回填和实时区块监听，存储区块信息到SQLite数据库，提供Web界面实时监控矿工活动和网络状态",
+  "main": "block-monitor.js",
+  "scripts": {
+    "start": "cross-env NODE_OPTIONS=\"--max-old-space-size=2048\" node --expose-gc block-monitor.js",
+    "start-safe": "cross-env NODE_OPTIONS=\"--max-old-space-size=1024\" node --expose-gc block-monitor.js",
+    "web": "node web-server.js",
+    "test-config": "node test-config.js",
+    "test-api": "node test-api.js",
+    "test-performance": "node test-performance.js",
+    "test-resumable": "node test-resumable.js",
+    "memory-status": "node --expose-gc memory-monitor.js status",
+    "memory-monitor": "node --expose-gc memory-monitor.js monitor",
+    "memory-gc": "node --expose-gc memory-monitor.js gc",
+    "migrate-db": "node migrate-database.js",
+    "setup": "cp config-example.json config.json",
+    "monitor": "cross-env NODE_OPTIONS=\"--max-old-space-size=2048\" node --expose-gc block-monitor.js --config config.json"
+  },
+  "keywords": [
+    "3dpass",
+    "blockchain",
+    "data-collection",
+    "sqlite",
+    "polkadot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@polkadot/api": "12.3.1",
+    "@polkadot/api-derive": "12.3.1",
+    "@polkadot/keyring": "13.0.2",
+    "@polkadot/types": "12.3.1",
+    "@polkadot/util": "13.0.2",
+    "@polkadot/util-crypto": "13.0.2",
+    "chokidar": "^4.0.1",
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "winston": "^3.8.2",
+    "yargs": "17.7.1"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "rpcUrl": "wss://rpc.3dpass.org",
+  "startHeight": 0,
+  "database": {
+    "path": "./3dp_blocks.db",
+    "batchSize": 50
+  }
+}

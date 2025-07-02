@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3DPass区块链监控 - 主页</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🔗 3DPass区块链监控</h1>
+            <p class="subtitle">实时监控3DPass网络状态和矿工活动</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- 上半部分：图表和统计信息 -->
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>当前难度</h3>
+                    <p class="stat-value" id="currentDifficulty">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>当前哈希率</h3>
+                    <p class="stat-value" id="currentHashrate">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>爆块奖励</h3>
+                    <p class="stat-value" id="blockReward">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>今日矿工数</h3>
+                    <p class="stat-value" id="todayMiners">-</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>📈 最近24小时哈希率趋势</h3>
+                <canvas id="hashrateChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 下半部分：今日爆块排名 -->
+        <section class="miners-section">
+            <div class="section-header">
+                <h3>🏆 今日爆块排名</h3>
+                <div class="refresh-info">
+                    <span id="lastUpdate">最后更新: -</span>
+                    <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="miners-table">
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>地址</th>
+                            <th>爆块数</th>
+                            <th>占比</th>
+                            <th>最新高度</th>
+                            <th>最后爆块</th>
+                        </tr>
+                    </thead>
+                    <tbody id="minersTableBody">
+                        <tr>
+                            <td colspan="6" class="loading">📊 加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 3DPass区块链监控系统</p>
+        </div>
+    </footer>
+
+    <script src="/main.js"></script>
+</body>
+</html> 

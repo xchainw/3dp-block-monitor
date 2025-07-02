@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矿工详情 - 3DPass区块链监控</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-nav">
+                <a href="/" class="back-btn">← 返回主页</a>
+                <div>
+                    <h1>👤 矿工详情</h1>
+                    <p class="miner-address" id="minerAddress">-</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- 上半部分：统计信息和图表 -->
+        <section class="miner-stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>今日爆块</h3>
+                    <p class="stat-value" id="todayBlocks">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>本周爆块</h3>
+                    <p class="stat-value" id="weekBlocks">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>本月爆块</h3>
+                    <p class="stat-value" id="monthBlocks">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>总爆块数</h3>
+                    <p class="stat-value" id="totalBlocks">-</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>📊 最近10天每日爆块数量</h3>
+                <canvas id="dailyChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 下半部分：最近爆块记录 -->
+        <section class="blocks-section">
+            <div class="section-header">
+                <h3>📋 最近150个爆块记录</h3>
+                <div class="refresh-info">
+                    <span id="lastUpdate">最后更新: -</span>
+                    <button id="refreshBtn" class="refresh-btn">🔄 刷新</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="blocks-table">
+                    <thead>
+                        <tr>
+                            <th>区块高度</th>
+                            <th>区块哈希</th>
+                            <th>爆块时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocksTableBody">
+                        <tr>
+                            <td colspan="3" class="loading">📊 加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 3DPass区块链监控系统</p>
+        </div>
+    </footer>
+
+    <script src="/miner.js"></script>
+</body>
+</html> 
