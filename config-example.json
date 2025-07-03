@@ -1,6 +1,7 @@
 {
   "rpcUrl": "wss://rpc.3dpass.org",
   "startHeight": 1,
+  "webPort": 6000,
   "database": {
     "path": "./3dp_blocks.db",
     "batchSize": 150
@@ -12,6 +13,7 @@
   "_comments": {
     "rpcUrl": "3DPass节点RPC地址，备用节点: wss://rpc2.3dpass.org",
     "startHeight": "开始同步的区块高度，1表示从初始区块开始",
+    "webPort": "web服务端口",
     "database.path": "SQLite数据库文件路径",
     "database.batchSize": "批量处理区块数，内存不足时可减小到20-30",
     "difficultyChanges.firstChange": "第一次难度调整的区块高度",

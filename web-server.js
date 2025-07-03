@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+let PORT = process.env.PORT || 6000; // 默认端口6000，将在配置加载后更新
 
 // 中间件
 app.use(cors());
@@ -31,6 +31,10 @@ function initDatabase() {
         }
         
         config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); // 加载配置到全局变量
+        
+        // 从配置文件读取端口号，如果没有设置则使用环境变量或默认端口6000
+        PORT = process.env.PORT || config.webPort || 6000;
+        
         const dbPath = config.database?.path || './3dp_blocks.db';
         
         if (!fs.existsSync(dbPath)) {
@@ -43,6 +47,7 @@ function initDatabase() {
                 reject(err);
             } else {
                 console.log(`📊 数据库连接成功: ${dbPath}`);
+                console.log(`🌐 Web端口配置: ${PORT} (来源: ${process.env.PORT ? '环境变量' : config.webPort ? '配置文件' : '默认值'})`);
                 console.log(`⚙️ 难度变更配置: 第一次变更区块 #${config.difficultyChanges?.firstChange || 370899}, 第二次变更区块 #${config.difficultyChanges?.secondChange || 740500}`);
                 resolve();
             }
