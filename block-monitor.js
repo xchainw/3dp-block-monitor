@@ -486,20 +486,22 @@ async function checkDataIntegrity(fromHeight, toHeight) {
 }
 
 // 带重试的单区块获取
-async function fetchBlockDataWithRetry(api, height, maxRetries = 3) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+async function fetchBlockDataWithRetry(api, height, maxRetries = null) {
+    const actualMaxRetries = maxRetries || config.reconnection?.maxRetries || 3;
+    for (let attempt = 1; attempt <= actualMaxRetries; attempt++) {
         try {
             const blockData = await fetchBlockData(api, height);
             return blockData;
         } catch (error) {
-            console.warn(`⚠️ 获取区块 #${height} 失败 (尝试 ${attempt}/${maxRetries}):`, error.message);
+            console.warn(`⚠️ 获取区块 #${height} 失败 (尝试 ${attempt}/${actualMaxRetries}):`, error.message);
             
-            if (attempt === maxRetries) {
+            if (attempt === actualMaxRetries) {
                 console.error(`❌ 区块 #${height} 获取失败，已达最大重试次数`);
                 throw error;
             }
             
             // 等待后重试，每次等待时间递增
+            const baseDelay = config.reconnection?.retryDelay || 10000;
             const waitTime = attempt * 2000; // 2秒、4秒、6秒...
             console.log(`⏳ 等待 ${waitTime/1000} 秒后重试...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -597,7 +599,7 @@ async function processBlock(api, height) {
     }
 }
 
-// 批量处理区块（内存优化版：防止内存溢出）
+// 批量处理区块（增强版：网络断开恢复机制）
 async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
     console.log(`📦 批量处理区块: ${fromHeight} 到 ${toHeight}`);
     
@@ -608,6 +610,9 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
         console.log(`⚠️ 内存使用过高 (${maxMemoryMB.toFixed(1)}MB)，减小批次到 ${batchSize}`);
     }
     
+    // 🚨 失败批次记录 - 用于断线恢复后补漏
+    const failedRanges = [];
+    
     for (let i = fromHeight; i <= toHeight; i += batchSize) {
         const batchEnd = Math.min(i + batchSize - 1, toHeight);
         
@@ -615,109 +620,246 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
         const memBefore = process.memoryUsage();
         console.log(`🔍 并发获取区块数据: ${i}-${batchEnd} (内存: ${(memBefore.heapUsed / 1024 / 1024).toFixed(1)}MB)`);
         
-        try {
-            // 阶段1：小批量并发获取（避免内存爆炸）
-            const smallBatchSize = 10; // 进一步细分批次
-            const allBlockData = [];
-            
-            for (let subStart = i; subStart <= batchEnd; subStart += smallBatchSize) {
-                const subEnd = Math.min(subStart + smallBatchSize - 1, batchEnd);
-                const promises = [];
-                
-                // 小批量并发获取
-                for (let height = subStart; height <= subEnd; height++) {
-                    promises.push(fetchBlockData(api, height));
+                let batchRetries = 0;
+        const maxBatchRetries = config.reconnection?.maxRetries || 3;
+        let batchSuccess = false;
+        
+        // 🔄 批次级别重试机制
+        while (batchRetries < maxBatchRetries && !batchSuccess) {
+            try {
+                // 📊 连接状态检查
+                if (!await checkApiConnection(api)) {
+                    console.warn(`⚠️ API连接异常，尝试重连...`);
+                    await reconnectApi(api);
                 }
                 
-                const results = await Promise.allSettled(promises);
+                // 阶段1：小批量并发获取（避免内存爆炸）
+                const smallBatchSize = 10; // 进一步细分批次
+                const allBlockData = [];
+                const failedBlocks = [];
                 
-                // 立即处理结果，释放内存
-                for (let j = 0; j < results.length; j++) {
-                    const result = results[j];
-                    const blockHeight = subStart + j;
+                for (let subStart = i; subStart <= batchEnd; subStart += smallBatchSize) {
+                    const subEnd = Math.min(subStart + smallBatchSize - 1, batchEnd);
+                    const promises = [];
                     
-                    if (result.status === 'fulfilled' && result.value) {
-                        allBlockData.push(result.value);
+                    // 小批量并发获取
+                    for (let height = subStart; height <= subEnd; height++) {
+                        promises.push(fetchBlockData(api, height));
+                    }
+                    
+                    const results = await Promise.allSettled(promises);
+                    
+                    // 立即处理结果，释放内存
+                    for (let j = 0; j < results.length; j++) {
+                        const result = results[j];
+                        const blockHeight = subStart + j;
+                        
+                        if (result.status === 'fulfilled' && result.value) {
+                            allBlockData.push(result.value);
+                        } else {
+                            const errorMsg = result.reason?.message || result.reason;
+                            console.error(`获取区块 #${blockHeight} 失败:`, errorMsg);
+                            failedBlocks.push(blockHeight);
+                            
+                            // 🔍 网络错误检测
+                            if (errorMsg.includes('disconnected') || errorMsg.includes('WebSocket is not connected')) {
+                                console.warn(`🚨 检测到网络断开错误，区块 #${blockHeight}`);
+                                throw new Error(`网络断开: ${errorMsg}`);
+                            }
+                        }
+                    }
+                    
+                    // 🗑️ 强制垃圾回收提示
+                    if (global.gc) {
+                        global.gc();
+                    }
+                    
+                    // 短暂延迟，让系统回收内存
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                // 阶段2：按区块高度排序
+                allBlockData.sort((a, b) => a.height - b.height);
+                
+                // 阶段3：批量写入数据库
+                if (allBlockData.length > 0) {
+                    await batchSaveBlocksInfo(allBlockData);
+                    
+                    // 阶段4：批量处理KYC信息（并发优化）
+                    if (!argv['disable-kyc']) {
+                        console.log(`🆔 批量并发处理KYC信息: ${allBlockData.length} 个区块`);
+                        const kycStartTime = Date.now();
+                        
+                        // 并发处理KYC信息，每批最多10个并发
+                        const kycConcurrency = 10;
+                        for (let i = 0; i < allBlockData.length; i += kycConcurrency) {
+                            const batch = allBlockData.slice(i, i + kycConcurrency);
+                            const kycPromises = batch.map(blockData => 
+                                processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash)
+                                    .catch(error => {
+                                        console.debug(`KYC处理失败 #${blockData.height}:`, error.message);
+                                        return null; // 不让单个失败影响整体
+                                    })
+                            );
+                            
+                            // 等待当前批次完成
+                            await Promise.allSettled(kycPromises);
+                        }
+                        
+                        const kycDuration = Date.now() - kycStartTime;
+                        console.log(`⚡ KYC并发处理完成: ${(kycDuration / 1000).toFixed(1)}秒`);
                     } else {
-                        console.error(`获取区块 #${blockHeight} 失败:`, result.reason?.message || result.reason);
-                        // 记录失败的区块，但不阻止继续处理
+                        console.log(`⏭️ 已禁用KYC处理，跳过 ${allBlockData.length} 个区块的KYC信息`);
                     }
                 }
                 
-                // 🗑️ 强制垃圾回收提示
+                // 🧠 内存监控（处理后）
+                const memAfter = process.memoryUsage();
+                const memDiff = (memAfter.heapUsed - memBefore.heapUsed) / 1024 / 1024;
+                
+                console.log(`✅ 批次完成: ${i}-${batchEnd} (成功: ${allBlockData.length}/${batchEnd - i + 1})`);
+                console.log(`   💾 内存变化: ${memDiff > 0 ? '+' : ''}${memDiff.toFixed(1)}MB (当前: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB)`);
+                
+                // 🚨 部分失败处理
+                if (failedBlocks.length > 0) {
+                    console.warn(`⚠️ 批次 ${i}-${batchEnd} 中有 ${failedBlocks.length} 个区块失败: ${failedBlocks.join(', ')}`);
+                    
+                    // 🔧 将失败的区块记录到待补漏列表
+                    const failedRanges_temp = getMissingBlockRanges(failedBlocks);
+                    failedRanges.push(...failedRanges_temp);
+                    
+                    // 如果失败率过高，可能是网络问题
+                    const failureRate = failedBlocks.length / (batchEnd - i + 1);
+                    if (failureRate > 0.5) {
+                        console.error(`❌ 批次失败率过高 (${(failureRate * 100).toFixed(1)}%)，可能是网络问题`);
+                        throw new Error(`批次失败率过高: ${failureRate * 100}%`);
+                    }
+                }
+                
+                // 🚨 内存警告检查
+                if (memAfter.heapUsed / 1024 / 1024 > 800) {
+                    console.warn(`⚠️ 内存使用警告: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB，建议重启程序`);
+                }
+                
+                // 清理变量，帮助垃圾回收
+                allBlockData.length = 0;
+                
+                // 标记批次成功
+                batchSuccess = true;
+                
+                // 延迟时间根据内存使用情况调整
+                const delayTime = memAfter.heapUsed / 1024 / 1024 > 600 ? 3000 : 1000;
+                await new Promise(resolve => setTimeout(resolve, delayTime));
+                
+            } catch (error) {
+                batchRetries++;
+                console.error(`❌ 批次处理失败 ${i}-${batchEnd} (尝试 ${batchRetries}/${maxBatchRetries}):`, error.message);
+                
+                // 🔧 网络错误特殊处理
+                if (error.message.includes('网络断开') || error.message.includes('disconnected')) {
+                    console.warn(`🚨 检测到网络断开，等待重连...`);
+                    
+                    // 等待更长时间让网络恢复
+                    const baseDelay = config.reconnection?.retryDelay || 10000;
+                    const waitTime = Math.min(batchRetries * baseDelay, 30000); // 最多等30秒
+                    console.log(`⏳ 等待 ${waitTime/1000} 秒后重试...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    
+                    // 尝试重新连接
+                    try {
+                        await reconnectApi(api);
+                        console.log(`✅ 网络重连成功，继续批次处理`);
+                    } catch (reconnectError) {
+                        console.error(`❌ 重连失败:`, reconnectError.message);
+                    }
+                } else {
+                    // 其他错误，较短等待
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+                
+                // 错误时强制垃圾回收
                 if (global.gc) {
                     global.gc();
                 }
                 
-                // 短暂延迟，让系统回收内存
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            // 阶段2：按区块高度排序
-            allBlockData.sort((a, b) => a.height - b.height);
-            
-            // 阶段3：批量写入数据库
-            if (allBlockData.length > 0) {
-                await batchSaveBlocksInfo(allBlockData);
-                
-                // 阶段4：批量处理KYC信息（并发优化）
-                if (!argv['disable-kyc']) {
-                    console.log(`🆔 批量并发处理KYC信息: ${allBlockData.length} 个区块`);
-                    const kycStartTime = Date.now();
-                    
-                    // 并发处理KYC信息，每批最多10个并发
-                    const kycConcurrency = 10;
-                    for (let i = 0; i < allBlockData.length; i += kycConcurrency) {
-                        const batch = allBlockData.slice(i, i + kycConcurrency);
-                        const kycPromises = batch.map(blockData => 
-                            processKycInfo(api, blockData.height, blockData.author, blockData.authorPublicKey, blockData.blockhash)
-                                .catch(error => {
-                                    console.debug(`KYC处理失败 #${blockData.height}:`, error.message);
-                                    return null; // 不让单个失败影响整体
-                                })
-                        );
-                        
-                        // 等待当前批次完成
-                        await Promise.allSettled(kycPromises);
-                    }
-                    
-                    const kycDuration = Date.now() - kycStartTime;
-                    console.log(`⚡ KYC并发处理完成: ${(kycDuration / 1000).toFixed(1)}秒`);
-                } else {
-                    console.log(`⏭️ 已禁用KYC处理，跳过 ${allBlockData.length} 个区块的KYC信息`);
+                // 如果达到最大重试次数，记录失败范围
+                if (batchRetries >= maxBatchRetries) {
+                    console.error(`❌ 批次 ${i}-${batchEnd} 达到最大重试次数，记录为失败范围`);
+                    failedRanges.push({ start: i, end: batchEnd });
+                    break;
                 }
             }
-            
-            // 🧠 内存监控（处理后）
-            const memAfter = process.memoryUsage();
-            const memDiff = (memAfter.heapUsed - memBefore.heapUsed) / 1024 / 1024;
-            
-            console.log(`✅ 批次完成: ${i}-${batchEnd} (成功: ${allBlockData.length}/${batchEnd - i + 1})`);
-            console.log(`   💾 内存变化: ${memDiff > 0 ? '+' : ''}${memDiff.toFixed(1)}MB (当前: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB)`);
-            
-            // 🚨 内存警告检查
-            if (memAfter.heapUsed / 1024 / 1024 > 800) {
-                console.warn(`⚠️ 内存使用警告: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB，建议重启程序`);
-            }
-            
-            // 清理变量，帮助垃圾回收
-            allBlockData.length = 0;
-            
-            // 延迟时间根据内存使用情况调整
-            const delayTime = memAfter.heapUsed / 1024 / 1024 > 600 ? 3000 : 1000;
-            await new Promise(resolve => setTimeout(resolve, delayTime));
-            
-        } catch (error) {
-            console.error(`批次处理失败 ${i}-${batchEnd}:`, error);
-            
-            // 错误时强制垃圾回收
-            if (global.gc) {
-                global.gc();
-            }
-            
-            // 发生错误时等待更长时间
-            await new Promise(resolve => setTimeout(resolve, 5000));
         }
+        
+        // 如果批次最终失败，继续下一个批次
+        if (!batchSuccess) {
+            console.warn(`⚠️ 跳过失败批次 ${i}-${batchEnd}，继续下一个批次`);
+        }
+    }
+    
+    // 🔧 批量处理完成后的失败补漏
+    if (failedRanges.length > 0) {
+        console.warn(`\n🚨 批量处理完成，发现 ${failedRanges.length} 个失败范围需要补漏：`);
+        failedRanges.forEach(range => {
+            if (range.start === range.end) {
+                console.warn(`  📍 失败区块: #${range.start}`);
+            } else {
+                console.warn(`  📍 失败范围: #${range.start} - #${range.end} (${range.end - range.start + 1} 个区块)`);
+            }
+        });
+        
+        console.log(`🔧 开始补漏失败的区块...`);
+        try {
+            await fillMissingBlocks(api, failedRanges);
+            console.log(`✅ 失败区块补漏完成`);
+        } catch (fillError) {
+            console.error(`❌ 失败区块补漏失败:`, fillError.message);
+        }
+    }
+}
+
+// 🔍 检查API连接状态
+async function checkApiConnection(api) {
+    try {
+        // 尝试获取最新区块头来检查连接
+        const timeout = config.reconnection?.connectionTimeout || 5000;
+        const header = await Promise.race([
+            api.rpc.chain.getHeader(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('连接超时')), timeout))
+        ]);
+        return header ? true : false;
+    } catch (error) {
+        console.debug(`API连接检查失败:`, error.message);
+        return false;
+    }
+}
+
+// 🔄 重新连接API
+async function reconnectApi(api) {
+    try {
+        console.log(`🔄 尝试重新连接API...`);
+        
+        // 检查提供者连接状态
+        if (api.provider.isConnected === false) {
+            console.log(`📡 重新连接WebSocket...`);
+            await api.provider.connect();
+        }
+        
+        // 等待连接稳定
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 验证连接是否恢复
+        const isConnected = await checkApiConnection(api);
+        if (!isConnected) {
+            throw new Error('重连后连接验证失败');
+        }
+        
+        console.log(`✅ API重连成功`);
+        return true;
+        
+    } catch (error) {
+        console.error(`❌ API重连失败:`, error.message);
+        throw error;
     }
 }
 
@@ -903,7 +1045,7 @@ async function backfillHistoricalBlocks(api) {
         const finalCompletionPercentage = (((finalMaxHeight - startHeight + 1) / (currentHeight - startHeight + 1)) * 100).toFixed(2);
         console.log(`  🎯 最终进度: ${finalCompletionPercentage}% (${finalMaxHeight.toLocaleString()}/${currentHeight.toLocaleString()})`);
         
-        // 🔍 数据完整性检查和补漏
+        // 🔍 数据完整性检查和补漏（增强版）
         console.log('\n🔍 开始数据完整性检查...');
         try {
             const integrityResult = await checkDataIntegrity(startHeight, currentHeight);
@@ -912,15 +1054,32 @@ async function backfillHistoricalBlocks(api) {
                 console.log('🔧 发现数据缺失，开始自动补漏...');
                 await fillMissingBlocks(api, integrityResult.missingRanges);
                 
-                // 再次检查完整性
-                console.log('🔍 补漏后再次检查数据完整性...');
-                const recheckResult = await checkDataIntegrity(startHeight, currentHeight);
+                // 再次检查完整性（最多3次）
+                let recheckAttempts = 0;
+                const maxRecheckAttempts = 3;
                 
-                if (recheckResult.isComplete) {
-                    console.log('✅ 数据完整性修复成功：所有区块已完整');
-                } else {
-                    console.warn(`⚠️ 仍有 ${recheckResult.missingBlocks.length} 个区块未能修复`);
+                while (recheckAttempts < maxRecheckAttempts) {
+                    console.log(`🔍 补漏后再次检查数据完整性... (尝试 ${recheckAttempts + 1}/${maxRecheckAttempts})`);
+                    const recheckResult = await checkDataIntegrity(startHeight, currentHeight);
+                    
+                    if (recheckResult.isComplete) {
+                        console.log('✅ 数据完整性修复成功：所有区块已完整');
+                        break;
+                    } else {
+                        recheckAttempts++;
+                        console.warn(`⚠️ 第 ${recheckAttempts} 次检查仍有 ${recheckResult.missingBlocks.length} 个区块缺失`);
+                        
+                        if (recheckAttempts < maxRecheckAttempts) {
+                            console.log('🔧 继续补漏剩余缺失区块...');
+                            await fillMissingBlocks(api, recheckResult.missingRanges);
+                        } else {
+                            console.error(`❌ 数据完整性修复失败，${recheckResult.missingBlocks.length} 个区块仍然缺失`);
+                            console.log('💡 建议稍后手动运行完整性检查: node block-monitor.js --check-integrity');
+                        }
+                    }
                 }
+            } else {
+                console.log('✅ 数据完整性检查通过：所有区块完整');
             }
         } catch (integrityError) {
             console.error('❌ 数据完整性检查失败:', integrityError);
@@ -943,20 +1102,106 @@ async function backfillHistoricalBlocks(api) {
     }
 }
 
-// 开始实时监听
+// 开始实时监听（增强版：断线恢复机制）
 async function startRealTimeMonitoring(api) {
     console.log('🔴 开始实时监听最新已确认的区块...');
     
-    await api.rpc.chain.subscribeFinalizedHeads(async (header) => {
+    let lastProcessedHeight = await getMaxBlockHeight();
+    let subscription = null;
+    
+    // 💓 连接健康检查
+    const healthCheckTime = config.reconnection?.healthCheckInterval || 30000;
+    const healthCheckInterval = setInterval(async () => {
+        const isConnected = await checkApiConnection(api);
+        if (!isConnected) {
+            console.warn('⚠️ 实时监听连接异常，尝试重新连接...');
+            try {
+                await reconnectApi(api);
+                await startSubscription();
+            } catch (error) {
+                console.error('❌ 实时监听重连失败:', error);
+            }
+        }
+    }, healthCheckTime); // 根据配置设置检查间隔
+    
+    // 🔄 启动订阅
+    async function startSubscription() {
         try {
-            const latestBlockHeight = Number(header.number);
-            console.log(`⛓️ 新区块: #${latestBlockHeight}`);
+            // 取消之前的订阅
+            if (subscription) {
+                await subscription();
+                subscription = null;
+            }
             
-            // 处理新区块
-            await processBlock(api, latestBlockHeight);
+            // 🔍 检查是否有遗漏的区块（断线期间可能错过的区块）
+            const currentMaxHeight = await getMaxBlockHeight();
+            if (currentMaxHeight > lastProcessedHeight) {
+                console.log(`🔍 检测到可能遗漏的区块: #${lastProcessedHeight + 1} 到 #${currentMaxHeight}`);
+                
+                // 补漏遗漏的区块
+                for (let height = lastProcessedHeight + 1; height <= currentMaxHeight; height++) {
+                    try {
+                        await processBlock(api, height);
+                        lastProcessedHeight = height;
+                    } catch (error) {
+                        console.error(`❌ 补漏区块 #${height} 失败:`, error);
+                    }
+                }
+            }
+            
+            // 创建新的订阅
+            subscription = await api.rpc.chain.subscribeFinalizedHeads(async (header) => {
+                try {
+                    const latestBlockHeight = Number(header.number);
+                    console.log(`⛓️ 新区块: #${latestBlockHeight}`);
+                    
+                    // 🔍 检查是否跳过了某些区块
+                    if (latestBlockHeight > lastProcessedHeight + 1) {
+                        console.warn(`⚠️ 检测到跳过的区块: #${lastProcessedHeight + 1} 到 #${latestBlockHeight - 1}`);
+                        
+                        // 补漏跳过的区块
+                        for (let height = lastProcessedHeight + 1; height < latestBlockHeight; height++) {
+                            try {
+                                await processBlock(api, height);
+                            } catch (error) {
+                                console.error(`❌ 补漏跳过区块 #${height} 失败:`, error);
+                            }
+                        }
+                    }
+                    
+                    // 处理当前新区块
+                    await processBlock(api, latestBlockHeight);
+                    lastProcessedHeight = latestBlockHeight;
+                    
+                } catch (error) {
+                    console.error('处理新区块失败:', error);
+                    
+                    // 🔍 网络错误检测
+                    if (error.message.includes('disconnected') || error.message.includes('WebSocket is not connected')) {
+                        console.warn('🚨 实时监听中检测到网络断开，将在下次健康检查时重连');
+                    }
+                }
+            });
+            
+            console.log('✅ 实时监听订阅创建成功');
             
         } catch (error) {
-            console.error('处理新区块失败:', error);
+            console.error('❌ 创建实时监听订阅失败:', error);
+            throw error;
+        }
+    }
+    
+    // 初始启动订阅
+    await startSubscription();
+    
+    // 优雅退出时清理
+    process.on('SIGINT', () => {
+        console.log('📛 清理实时监听资源...');
+        if (healthCheckInterval) {
+            clearInterval(healthCheckInterval);
+        }
+        if (subscription) {
+            subscription().catch(console.error);
         }
     });
 }
@@ -996,6 +1241,13 @@ async function main() {
             console.log('  📈 预期速度: ~30-40秒/批次 (50个区块)');
             console.log('  💡 提示: 如需更快同步，可使用 --disable-kyc 参数');
         }
+        
+        // 显示断线恢复配置信息
+        console.log('\n🔄 断线恢复配置:');
+        console.log(`  🔁 最大重试次数: ${config.reconnection?.maxRetries || 3}`);
+        console.log(`  ⏱️ 重试延迟: ${(config.reconnection?.retryDelay || 10000) / 1000} 秒`);
+        console.log(`  💓 健康检查间隔: ${(config.reconnection?.healthCheckInterval || 30000) / 1000} 秒`);
+        console.log(`  ⏰ 连接超时: ${(config.reconnection?.connectionTimeout || 5000) / 1000} 秒`);
         console.log('');
 
         // 处理手动补漏指定范围
@@ -1054,6 +1306,35 @@ async function main() {
             
             console.log('✅ 完整性检查完成');
             process.exit(0);
+        }
+        
+        // 🔍 启动时完整性检查（防止上次运行有未处理的缺失区块）
+        console.log('🔍 启动时完整性检查...');
+        try {
+            const dbMaxHeight = await getMaxBlockHeight();
+            if (dbMaxHeight > 0) {
+                // 检查最近1000个区块的完整性
+                const checkStartHeight = Math.max(startHeight, dbMaxHeight - 1000);
+                const startupIntegrityResult = await checkDataIntegrity(checkStartHeight, dbMaxHeight);
+                
+                if (!startupIntegrityResult.isComplete) {
+                    console.log(`🔧 启动时发现 ${startupIntegrityResult.missingBlocks.length} 个缺失区块，开始补漏...`);
+                    await fillMissingBlocks(api, startupIntegrityResult.missingRanges);
+                    
+                    // 再次检查
+                    const recheckResult = await checkDataIntegrity(checkStartHeight, dbMaxHeight);
+                    if (recheckResult.isComplete) {
+                        console.log('✅ 启动时数据完整性修复成功');
+                    } else {
+                        console.warn(`⚠️ 启动时仍有 ${recheckResult.missingBlocks.length} 个区块未能修复`);
+                    }
+                } else {
+                    console.log('✅ 启动时数据完整性检查通过');
+                }
+            }
+        } catch (startupIntegrityError) {
+            console.error('❌ 启动时完整性检查失败:', startupIntegrityError);
+            console.log('⚠️ 跳过启动时完整性检查，继续运行...');
         }
         
         // 🎯 两阶段导入策略：性能优化版

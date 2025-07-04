@@ -9,5 +9,11 @@
   "difficultyChanges": {
     "firstChange": 370899,
     "secondChange": 740500
+  },
+  "reconnection": {
+    "maxRetries": 3,
+    "retryDelay": 10000,
+    "healthCheckInterval": 30000,
+    "connectionTimeout": 5000
   }
 }
