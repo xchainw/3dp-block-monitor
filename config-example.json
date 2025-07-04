@@ -10,6 +10,12 @@
     "firstChange": 370899,
     "secondChange": 740500
   },
+  "reconnection": {
+    "maxRetries": 3,
+    "retryDelay": 10000,
+    "healthCheckInterval": 30000,
+    "connectionTimeout": 5000
+  },
   "_comments": {
     "rpcUrl": "3DPass节点RPC地址，备用节点: wss://rpc2.3dpass.org",
     "startHeight": "开始同步的区块高度，1表示从初始区块开始",
@@ -18,6 +24,10 @@
     "database.batchSize": "批量处理区块数，内存不足时可减小到20-30",
     "difficultyChanges.firstChange": "第一次难度调整的区块高度",
     "difficultyChanges.secondChange": "第二次难度调整的区块高度",
-    "performance_tips": "内存不足时: 减小batchSize | 高性能机器: 增加到100"
+    "performance_tips": "内存不足时: 减小batchSize | 高性能机器: 增加到100",
+    "reconnection.maxRetries": "最大重试次数",
+    "reconnection.retryDelay": "重试延迟",
+    "reconnection.healthCheckInterval": "健康检查间隔",
+    "reconnection.connectionTimeout": "连接超时"
   }
 }
