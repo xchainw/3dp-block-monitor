@@ -4,7 +4,7 @@
   "webPort": 6000,
   "database": {
     "path": "./3dp_blocks.db",
-    "batchSize": 150
+    "batchSize": 200
   },
   "difficultyChanges": {
     "firstChange": 370899,
@@ -15,5 +15,11 @@
     "retryDelay": 10000,
     "healthCheckInterval": 30000,
     "connectionTimeout": 5000
+  },
+  "performance": {
+    "blockFetchConcurrency": 30,
+    "kycProcessConcurrency": 20,
+    "maxMemoryMB": 3500,
+    "delayBetweenBatches": 500
   }
 }

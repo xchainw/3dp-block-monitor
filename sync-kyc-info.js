@@ -173,10 +173,9 @@ async function main() {
             process.exit(0);
         }
         
-        logger.info(`📊 开始同步 ${allMiners.length} 个账号的KYC信息...`);
-        
-        // 并发处理KYC信息（每批10个）
-        const batchSize = 10;
+        // 并发处理KYC信息（使用配置的并发度）
+        const batchSize = config.performance?.kycProcessConcurrency || 10;
+        logger.info(`📊 开始同步 ${allMiners.length} 个账号的KYC信息... (并发度: ${batchSize})`);
         let processed = 0;
         let withKyc = 0;
         

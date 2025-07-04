@@ -603,11 +603,12 @@ async function processBlock(api, height) {
 async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
     console.log(`📦 批量处理区块: ${fromHeight} 到 ${toHeight}`);
     
-    // 🔧 内存优化：动态调整批次大小
+    // 🔧 内存优化：动态调整批次大小（根据配置）
     const maxMemoryMB = process.memoryUsage().heapUsed / 1024 / 1024;
-    if (maxMemoryMB > 500) { // 超过500MB时减小批次
+    const memoryLimit = config.performance?.maxMemoryMB || 1000; // 默认1GB限制
+    if (maxMemoryMB > memoryLimit) {
         batchSize = Math.min(batchSize, 20);
-        console.log(`⚠️ 内存使用过高 (${maxMemoryMB.toFixed(1)}MB)，减小批次到 ${batchSize}`);
+        console.log(`⚠️ 内存使用过高 (${maxMemoryMB.toFixed(1)}MB > ${memoryLimit}MB)，减小批次到 ${batchSize}`);
     }
     
     // 🚨 失败批次记录 - 用于断线恢复后补漏
@@ -618,7 +619,8 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
         
         // 🧠 内存监控
         const memBefore = process.memoryUsage();
-        console.log(`🔍 并发获取区块数据: ${i}-${batchEnd} (内存: ${(memBefore.heapUsed / 1024 / 1024).toFixed(1)}MB)`);
+        const blockConcurrency = config.performance?.blockFetchConcurrency || 10;
+        console.log(`🔍 并发获取区块数据: ${i}-${batchEnd} (并发度: ${blockConcurrency}, 内存: ${(memBefore.heapUsed / 1024 / 1024).toFixed(1)}MB)`);
         
                 let batchRetries = 0;
         const maxBatchRetries = config.reconnection?.maxRetries || 3;
@@ -633,8 +635,8 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
                     await reconnectApi(api);
                 }
                 
-                // 阶段1：小批量并发获取（避免内存爆炸）
-                const smallBatchSize = 10; // 进一步细分批次
+                // 阶段1：小批量并发获取（根据配置优化并发度）
+                const smallBatchSize = config.performance?.blockFetchConcurrency || 10; // 可配置的并发度
                 const allBlockData = [];
                 const failedBlocks = [];
                 
@@ -687,11 +689,10 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
                     
                     // 阶段4：批量处理KYC信息（并发优化）
                     if (!argv['disable-kyc']) {
-                        console.log(`🆔 批量并发处理KYC信息: ${allBlockData.length} 个区块`);
+                        // 并发处理KYC信息，根据配置设置并发度
+                        const kycConcurrency = config.performance?.kycProcessConcurrency || 10;
+                        console.log(`🆔 批量并发处理KYC信息: ${allBlockData.length} 个区块 (并发度: ${kycConcurrency})`);
                         const kycStartTime = Date.now();
-                        
-                        // 并发处理KYC信息，每批最多10个并发
-                        const kycConcurrency = 10;
                         for (let i = 0; i < allBlockData.length; i += kycConcurrency) {
                             const batch = allBlockData.slice(i, i + kycConcurrency);
                             const kycPromises = batch.map(blockData => 
@@ -736,9 +737,10 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
                     }
                 }
                 
-                // 🚨 内存警告检查
-                if (memAfter.heapUsed / 1024 / 1024 > 800) {
-                    console.warn(`⚠️ 内存使用警告: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB，建议重启程序`);
+                // 🚨 内存警告检查（根据配置）
+                const warningThreshold = config.performance?.maxMemoryMB * 0.9 || 900; // 90%内存阈值
+                if (memAfter.heapUsed / 1024 / 1024 > warningThreshold) {
+                    console.warn(`⚠️ 内存使用警告: ${(memAfter.heapUsed / 1024 / 1024).toFixed(1)}MB > ${warningThreshold}MB，建议重启程序`);
                 }
                 
                 // 清理变量，帮助垃圾回收
@@ -747,8 +749,10 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
                 // 标记批次成功
                 batchSuccess = true;
                 
-                // 延迟时间根据内存使用情况调整
-                const delayTime = memAfter.heapUsed / 1024 / 1024 > 600 ? 3000 : 1000;
+                // 延迟时间根据配置和内存使用情况调整
+                const baseDelay = config.performance?.delayBetweenBatches || 1000;
+                const memoryThreshold = config.performance?.maxMemoryMB * 0.8 || 800; // 80%内存阈值
+                const delayTime = memAfter.heapUsed / 1024 / 1024 > memoryThreshold ? baseDelay * 3 : baseDelay;
                 await new Promise(resolve => setTimeout(resolve, delayTime));
                 
             } catch (error) {
@@ -1248,6 +1252,18 @@ async function main() {
         console.log(`  ⏱️ 重试延迟: ${(config.reconnection?.retryDelay || 10000) / 1000} 秒`);
         console.log(`  💓 健康检查间隔: ${(config.reconnection?.healthCheckInterval || 30000) / 1000} 秒`);
         console.log(`  ⏰ 连接超时: ${(config.reconnection?.connectionTimeout || 5000) / 1000} 秒`);
+        
+        // 显示性能优化配置信息
+        console.log('\n🚀 性能优化配置:');
+        console.log(`  📦 区块获取并发度: ${config.performance?.blockFetchConcurrency || 10} 个`);
+        console.log(`  🆔 KYC处理并发度: ${config.performance?.kycProcessConcurrency || 10} 个`);
+        console.log(`  💾 内存限制: ${config.performance?.maxMemoryMB || 1000} MB`);
+        console.log(`  📦 批次大小: ${config.database?.batchSize || 50} 个区块`);
+        console.log(`  ⏱️ 批次间延迟: ${config.performance?.delayBetweenBatches || 1000} ms`);
+        
+        // 根据配置估算性能
+        const estimatedBlocksPerSecond = (config.performance?.blockFetchConcurrency || 10) / 2; // 保守估计每个区块2秒
+        console.log(`  📈 预估处理速度: ~${estimatedBlocksPerSecond} 区块/秒`);
         console.log('');
 
         // 处理手动补漏指定范围
