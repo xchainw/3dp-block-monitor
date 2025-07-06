@@ -14,7 +14,7 @@
     "memory-status": "node --expose-gc memory-monitor.js status",
     "memory-monitor": "node --expose-gc memory-monitor.js monitor",
     "memory-gc": "node --expose-gc memory-monitor.js gc",
-    "migrate-db": "node migrate-database.js",
+    "optimize-db": "node optimize-database.js",
     "setup": "cp config-example.json config.json",
     "monitor": "cross-env NODE_OPTIONS=\"--max-old-space-size=2048\" node --expose-gc block-monitor.js --config config.json"
   },
