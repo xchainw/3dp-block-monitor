@@ -265,6 +265,10 @@ class MainDashboard {
             const response = await fetch('/api/current-stats');
             const data = await response.json();
             
+            // 显示当前区块高度（使用完整数字，不缩写）
+            document.getElementById('currentBlock').textContent = 
+                data.latestHeight ? '#' + Number(data.latestHeight).toLocaleString('zh-CN') : '-';
+            
             document.getElementById('currentDifficulty').textContent = 
                 this.formatNumber(data.currentDifficulty);
             document.getElementById('currentHashrate').textContent = 

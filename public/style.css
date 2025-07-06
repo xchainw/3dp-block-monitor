@@ -120,8 +120,18 @@ main {
     max-width: 100%;
 }
 
-/* 大屏幕时固定4列显示 */
-@media (min-width: 1200px) {
+/* 大屏幕时固定5列显示 */
+@media (min-width: 1400px) {
+    .stats-grid {
+        grid-template-columns: repeat(5, 1fr);
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+/* 中等屏幕时显示3-4列 */
+@media (min-width: 1200px) and (max-width: 1399px) {
     .stats-grid {
         grid-template-columns: repeat(4, 1fr);
         max-width: 1200px;
