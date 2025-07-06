@@ -120,6 +120,21 @@ function initDatabase() {
             }
             console.log(`数据库连接成功: ${dbPath}`);
             
+            // 🚀 启用 WAL 模式 - 不影响现有数据
+            db.run("PRAGMA journal_mode=WAL", (err) => {
+                if (err) {
+                    console.error('启用WAL模式失败:', err);
+                } else {
+                    console.log('✅ WAL模式已启用');
+                }
+            });
+            
+            // 🔧 其他性能优化设置
+            db.run("PRAGMA synchronous=NORMAL");
+            db.run("PRAGMA cache_size=10000");
+            db.run("PRAGMA temp_store=memory");
+            db.run("PRAGMA busy_timeout=30000");
+            
             // 创建p3d_block_info表 - 优化后的数据类型
             db.run(`CREATE TABLE IF NOT EXISTS p3d_block_info (
                 id INTEGER PRIMARY KEY,
