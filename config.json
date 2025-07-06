@@ -1,7 +1,7 @@
 {
   "rpcUrl": "wss://rpc.3dpass.org",
   "startHeight": 1,
-  "webPort": 6000,
+  "webPort": 9070,
   "database": {
     "path": "./3dp_blocks.db",
     "batchSize": 200

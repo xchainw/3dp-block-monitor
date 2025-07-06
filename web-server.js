@@ -13,6 +13,8 @@ let PORT = process.env.PORT || 6000; // 默认端口6000，将在配置加载后
 // 中间件
 app.use(cors());
 app.use(express.json());
+
+// 静态文件服务
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 数据库连接
