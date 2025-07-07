@@ -1232,8 +1232,12 @@ async function startRealTimeMonitoring(api) {
         if (healthCheckInterval) {
             clearInterval(healthCheckInterval);
         }
-        if (subscription) {
-            subscription().catch(console.error);
+        if (subscription && typeof subscription === 'function') {
+            try {
+                subscription().catch(console.error);
+            } catch (error) {
+                console.error('❌ 取消订阅时出错:', error.message);
+            }
         }
     };
 }
