@@ -630,6 +630,12 @@ async function batchProcessBlocks(api, fromHeight, toHeight, batchSize = 50) {
     const failedRanges = [];
     
     for (let i = fromHeight; i <= toHeight; i += batchSize) {
+        // 检查是否收到关闭信号
+        if (isShuttingDown) {
+            console.log('🛑 收到关闭信号，终止批量处理');
+            break;
+        }
+        
         const batchEnd = Math.min(i + batchSize - 1, toHeight);
         
         // 🧠 内存监控
@@ -1131,6 +1137,13 @@ async function startRealTimeMonitoring(api) {
     // 💓 连接健康检查
     const healthCheckTime = config.reconnection?.healthCheckInterval || 30000;
     const healthCheckInterval = setInterval(async () => {
+        // 检查是否收到关闭信号
+        if (isShuttingDown) {
+            console.log('🛑 收到关闭信号，停止健康检查');
+            clearInterval(healthCheckInterval);
+            return;
+        }
+        
         const isConnected = await checkApiConnection(api);
         if (!isConnected) {
             console.warn('⚠️ 实时监听连接异常，尝试重新连接...');
@@ -1213,16 +1226,16 @@ async function startRealTimeMonitoring(api) {
     // 初始启动订阅
     await startSubscription();
     
-    // 优雅退出时清理
-    process.on('SIGINT', () => {
-        console.log('📛 清理实时监听资源...');
+    // 保存清理函数的引用，供优雅关闭使用
+    global.realtimeCleanup = () => {
+        console.log('🧹 清理实时监听资源...');
         if (healthCheckInterval) {
             clearInterval(healthCheckInterval);
         }
         if (subscription) {
             subscription().catch(console.error);
         }
-    });
+    };
 }
 
 // 主函数
@@ -1247,6 +1260,9 @@ async function main() {
         
         const provider = new WsProvider(rpcUrl);
         const api = await ApiPromise.create({provider});
+        
+        // 保存API实例引用，用于优雅关闭
+        currentApi = api;
         
         console.log('✅ API连接成功');
         
@@ -1406,21 +1422,84 @@ async function main() {
     }
 }
 
-// 优雅退出处理
-process.on('SIGINT', () => {
-    console.log('📛 收到退出信号，正在关闭数据库连接...');
-    if (db) {
-        db.close((err) => {
-            if (err) {
-                console.error('关闭数据库连接失败:', err);
-            } else {
-                console.log('✅ 数据库连接已关闭');
-            }
-            process.exit(0);
-        });
-    } else {
-        process.exit(0);
+// 全局变量，用于跟踪应用状态
+let isShuttingDown = false;
+let currentApi = null;
+
+// 优雅退出处理函数
+async function gracefulShutdown(signal) {
+    if (isShuttingDown) {
+        console.log('⚠️ 关闭程序已在进行中，请稍等...');
+        return;
     }
+    
+    isShuttingDown = true;
+    console.log(`\n📛 收到 ${signal} 信号，正在关闭3DPass区块监控系统...`);
+    
+    // 设置超时，避免无限等待
+    const shutdownTimeout = setTimeout(() => {
+        console.error('❌ 优雅关闭超时，强制退出');
+        process.exit(1);
+    }, 30000); // 30秒超时，给足时间完成清理
+    
+    try {
+        // 1. 清理实时监听资源
+        if (global.realtimeCleanup) {
+            global.realtimeCleanup();
+        }
+        
+        // 2. 关闭API连接
+        if (currentApi) {
+            console.log('🔌 正在关闭API连接...');
+            try {
+                await currentApi.disconnect();
+                console.log('✅ API连接已关闭');
+            } catch (apiError) {
+                console.warn('⚠️ API连接关闭时出现问题:', apiError.message);
+            }
+        }
+        
+        // 3. 关闭数据库连接
+        if (db) {
+            console.log('🔒 正在关闭数据库连接...');
+            await new Promise((resolve, reject) => {
+                db.close((err) => {
+                    if (err) {
+                        console.error('❌ 关闭数据库连接失败:', err);
+                        reject(err);
+                    } else {
+                        console.log('✅ 数据库连接已关闭');
+                        resolve();
+                    }
+                });
+            });
+        }
+        
+        clearTimeout(shutdownTimeout);
+        console.log('👋 3DPass区块监控系统已安全关闭');
+        process.exit(0);
+        
+    } catch (error) {
+        clearTimeout(shutdownTimeout);
+        console.error('❌ 优雅关闭过程中出现错误:', error);
+        process.exit(1);
+    }
+}
+
+// 监听各种退出信号
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));   // Ctrl+C
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); // PM2 stop
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // PM2 restart
+
+// 捕获未处理的异常和Promise拒绝
+process.on('uncaughtException', (error) => {
+    console.error('💥 未捕获的异常:', error);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 未处理的Promise拒绝:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION');
 });
 
 // 启动应用

@@ -588,21 +588,51 @@ async function startServer() {
     }
 }
 
-// 优雅退出
-process.on('SIGINT', () => {
-    console.log('\n📛 收到退出信号，正在关闭服务器...');
+// 优雅退出处理函数
+function gracefulShutdown(signal) {
+    console.log(`\n📛 收到 ${signal} 信号，正在关闭Web服务器...`);
+    
+    // 设置超时，避免无限等待
+    const shutdownTimeout = setTimeout(() => {
+        console.error('❌ 优雅关闭超时，强制退出');
+        process.exit(1);
+    }, 10000); // 10秒超时
+    
+    // 关闭数据库连接
     if (db) {
+        console.log('🔒 正在关闭数据库连接...');
         db.close((err) => {
+            clearTimeout(shutdownTimeout);
             if (err) {
-                console.error('关闭数据库连接失败:', err);
+                console.error('❌ 关闭数据库连接失败:', err);
+                process.exit(1);
             } else {
                 console.log('✅ 数据库连接已关闭');
+                console.log('👋 Web服务器已安全关闭');
+                process.exit(0);
             }
-            process.exit(0);
         });
     } else {
+        clearTimeout(shutdownTimeout);
+        console.log('👋 Web服务器已安全关闭');
         process.exit(0);
     }
+}
+
+// 监听各种退出信号
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));   // Ctrl+C
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); // PM2 stop
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // PM2 restart
+
+// 捕获未处理的异常和Promise拒绝
+process.on('uncaughtException', (error) => {
+    console.error('💥 未捕获的异常:', error);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 未处理的Promise拒绝:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION');
 });
 
 startServer(); 
