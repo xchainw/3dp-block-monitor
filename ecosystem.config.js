@@ -12,9 +12,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       },
-      error_file: './logs/app-error.log',
-      out_file: './logs/app-out.log',
-      log_file: './logs/app-combined.log',
+      // 注释掉文件日志，让日志输出到 stdout/stderr
+      // error_file: './logs/app-error.log',
+      // out_file: './logs/app-out.log',
+      // log_file: './logs/app-combined.log',
       time: true,
       merge_logs: true,
       kill_timeout: 30000,
@@ -35,9 +36,10 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 9070
       },
-      error_file: './logs/web-error.log',
-      out_file: './logs/web-out.log',
-      log_file: './logs/web-combined.log',
+      // 注释掉文件日志
+      // error_file: './logs/web-error.log',
+      // out_file: './logs/web-out.log',
+      // log_file: './logs/web-combined.log',
       time: true,
       merge_logs: true,
       kill_timeout: 10000,
