@@ -8,6 +8,9 @@ const {hideBin} = require("yargs/helpers");
 const winston = require('winston');
 const sqlite3 = require('sqlite3').verbose();
 
+// 导入内存守护进程
+const MemoryGuard = require('./memory-guard');
+
 const colorized = winston.format.colorize();
 const logger = winston.createLogger({
     level: 'debug',
@@ -1292,6 +1295,14 @@ async function startRealTimeMonitoring(api) {
 async function main() {
     try {
         console.log('🚀 启动3DPass区块监控系统...');
+        
+        // 初始化内存守护进程（从环境变量读取配置）
+        const memoryGuard = new MemoryGuard();
+        memoryGuard.startMonitoring();
+        console.log(`🛡️ 内存守护进程已启动 (配置来源: ${memoryGuard.configSource})`);
+        console.log(`   最大内存限制: ${memoryGuard.maxMemoryMB}MB`);
+        console.log(`   检查间隔: ${memoryGuard.checkInterval / 1000}秒`);
+        console.log(`   GC阈值: ${memoryGuard.gcThreshold * 100}%`);
         
         // 初始化数据库
         await initDatabase();

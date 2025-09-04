@@ -1,0 +1,130 @@
+{
+  "1g": {
+    "name": "1G内存服务器配置",
+    "description": "适用于1G内存的VPS，仅运行基础监控功能",
+    "backend": {
+      "maxMemoryMB": 200,
+      "maxOldSpaceSize": 512,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 30000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=512 --expose-gc --optimize-for-size --gc-interval=100"
+    },
+    "web": {
+      "maxMemoryMB": 100,
+      "maxOldSpaceSize": 256,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 60000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=256 --expose-gc --optimize-for-size"
+    },
+    "pm2": {
+      "backend": {
+        "max_memory_restart": "200M",
+        "memory_threshold": "180M"
+      },
+      "web": {
+        "max_memory_restart": "100M",
+        "memory_threshold": "80M"
+      }
+    }
+  },
+  "2g": {
+    "name": "2G内存服务器配置",
+    "description": "适用于2G内存的服务器，可运行完整功能",
+    "backend": {
+      "maxMemoryMB": 400,
+      "maxOldSpaceSize": 1024,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 30000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=1024 --expose-gc --optimize-for-size --gc-interval=100"
+    },
+    "web": {
+      "maxMemoryMB": 200,
+      "maxOldSpaceSize": 512,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 60000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=512 --expose-gc --optimize-for-size"
+    },
+    "pm2": {
+      "backend": {
+        "max_memory_restart": "400M",
+        "memory_threshold": "360M"
+      },
+      "web": {
+        "max_memory_restart": "200M",
+        "memory_threshold": "160M"
+      }
+    }
+  },
+  "4g": {
+    "name": "4G内存服务器配置",
+    "description": "适用于4G内存的服务器，可运行所有功能并处理大量数据",
+    "backend": {
+      "maxMemoryMB": 800,
+      "maxOldSpaceSize": 2048,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 30000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=2048 --expose-gc --optimize-for-size --gc-interval=100"
+    },
+    "web": {
+      "maxMemoryMB": 400,
+      "maxOldSpaceSize": 1024,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 60000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=1024 --expose-gc --optimize-for-size"
+    },
+    "pm2": {
+      "backend": {
+        "max_memory_restart": "800M",
+        "memory_threshold": "720M"
+      },
+      "web": {
+        "max_memory_restart": "400M",
+        "memory_threshold": "320M"
+      }
+    }
+  },
+  "8g": {
+    "name": "8G内存服务器配置",
+    "description": "适用于8G内存的高性能服务器，可处理大量并发和数据",
+    "backend": {
+      "maxMemoryMB": 1600,
+      "maxOldSpaceSize": 4096,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 30000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=4096 --expose-gc --optimize-for-size --gc-interval=100"
+    },
+    "web": {
+      "maxMemoryMB": 800,
+      "maxOldSpaceSize": 2048,
+      "gcThreshold": 0.7,
+      "restartThreshold": 0.9,
+      "checkInterval": 60000,
+      "maxRestarts": 20,
+      "nodeArgs": "--max-old-space-size=2048 --expose-gc --optimize-for-size"
+    },
+    "pm2": {
+      "backend": {
+        "max_memory_restart": "1600M",
+        "memory_threshold": "1440M"
+      },
+      "web": {
+        "max_memory_restart": "800M",
+        "memory_threshold": "640M"
+      }
+    }
+  }
+}

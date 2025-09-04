@@ -7,6 +7,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
+// 导入内存守护进程
+const MemoryGuard = require('./memory-guard');
+
 const app = express();
 let PORT = process.env.PORT || 6000; // 默认端口6000，将在配置加载后更新
 
@@ -612,6 +615,14 @@ app.get('/miner/:address', (req, res) => {
 // 启动服务器
 async function startServer() {
     try {
+        // 初始化内存守护进程（从环境变量读取配置）
+        const memoryGuard = new MemoryGuard();
+        memoryGuard.startMonitoring();
+        console.log(`🛡️ Web服务内存守护进程已启动 (配置来源: ${memoryGuard.configSource})`);
+        console.log(`   最大内存限制: ${memoryGuard.maxMemoryMB}MB`);
+        console.log(`   检查间隔: ${memoryGuard.checkInterval / 1000}秒`);
+        console.log(`   GC阈值: ${memoryGuard.gcThreshold * 100}%`);
+        
         await initDatabase();
         
         app.listen(PORT, () => {
