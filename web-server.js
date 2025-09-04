@@ -258,6 +258,43 @@ app.get('/api/current-stats', (req, res) => {
     });
 });
 
+// API: 获取当前验证者数量
+app.get('/api/validator-count', (req, res) => {
+    const sql = `
+        SELECT 
+            validator_count,
+            block_height,
+            timestamp
+        FROM p3d_validator_count 
+        ORDER BY block_height DESC 
+        LIMIT 1
+    `;
+    
+    db.get(sql, (err, result) => {
+        if (err) {
+            console.error('获取验证者数量失败:', err);
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        if (!result) {
+            console.warn('数据库中没有找到验证者数量数据');
+            res.json({
+                validatorCount: 0,
+                blockHeight: 0,
+                timestamp: 0
+            });
+            return;
+        }
+        
+        res.json({
+            validatorCount: result.validator_count,
+            blockHeight: result.block_height,
+            timestamp: result.timestamp
+        });
+    });
+});
+
 // API: 获取今天爆块排名
 app.get('/api/today-miners', (req, res) => {
     const todayStart = getTodayStart();

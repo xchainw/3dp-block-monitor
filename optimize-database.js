@@ -69,10 +69,10 @@ async function optimizeDatabase() {
         await rebuildIndexes(db);
         console.log('✅ 索引重建完成');
         
-        // 3. 优化表结构（重新排序数据）
-        console.log('📊 优化表数据排序...');
-        await optimizeTableOrder(db);
-        console.log('✅ 数据排序优化完成');
+        // 3. 优化表结构（重新排序数据， 与VACUUM冗余了？）
+        // console.log('📊 优化表数据排序...');
+        // await optimizeTableOrder(db);
+        // console.log('✅ 数据排序优化完成');
         
         // 4. 执行VACUUM压缩
         console.log('🗜️ 执行数据库压缩 (VACUUM)...');

@@ -249,6 +249,7 @@ class MainDashboard {
         try {
             await Promise.all([
                 this.loadCurrentStats(),
+                this.loadValidatorCount(),
                 this.loadHashrateChart(),
                 this.loadMinersData()
             ]);
@@ -277,6 +278,21 @@ class MainDashboard {
                 this.formatNumber(data.blockReward) + ' 3DP';
         } catch (error) {
             console.error('加载当前统计失败:', error);
+        }
+    }
+
+    // 加载验证者数量
+    async loadValidatorCount() {
+        try {
+            const response = await fetch('/api/validator-count');
+            const data = await response.json();
+            
+            // 显示验证者数量
+            document.getElementById('validatorCount').textContent = 
+                data.validatorCount ? data.validatorCount.toLocaleString('zh-CN') : '-';
+        } catch (error) {
+            console.error('加载验证者数量失败:', error);
+            document.getElementById('validatorCount').textContent = '-';
         }
     }
 

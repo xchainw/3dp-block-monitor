@@ -157,29 +157,50 @@ function initDatabase() {
                     db.run(`CREATE INDEX IF NOT EXISTS idx_author ON p3d_block_info(author)`);
                     db.run(`CREATE INDEX IF NOT EXISTS idx_blockhash ON p3d_block_info(blockhash)`);
                     
-                    // 创建p3d_kyc_info表 - KYC历史记录表
-                    db.run(`CREATE TABLE IF NOT EXISTS p3d_kyc_info (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                // 创建p3d_kyc_info表 - KYC历史记录表
+            db.run(`CREATE TABLE IF NOT EXISTS p3d_kyc_info (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                block_height INTEGER NOT NULL,
+                author VARCHAR(50) NOT NULL,
+                authorPublicKey VARCHAR(66),
+                discord VARCHAR(50),
+                display VARCHAR(50),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`, (err) => {
+                if (err) {
+                    console.error('创建KYC表失败:', err);
+                    reject(err);
+                } else {
+                    console.log('p3d_kyc_info表已就绪');
+                    
+                    // 创建KYC表索引
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_author ON p3d_kyc_info(author)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_block_height ON p3d_kyc_info(block_height)`);
+                    
+                    // 创建验证者数量表 - 存储每个区块的验证者数量
+                    db.run(`CREATE TABLE IF NOT EXISTS p3d_validator_count (
+                        id INTEGER PRIMARY KEY,
                         block_height INTEGER NOT NULL,
-                        author VARCHAR(50) NOT NULL,
-                        authorPublicKey VARCHAR(66),
-                        discord VARCHAR(50),
-                        display VARCHAR(50),
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        validator_count INTEGER NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(block_height)
                     )`, (err) => {
                         if (err) {
-                            console.error('创建KYC表失败:', err);
+                            console.error('创建验证者数量表失败:', err);
                             reject(err);
                         } else {
-                            console.log('p3d_kyc_info表已就绪');
+                            console.log('p3d_validator_count表已就绪');
                             
-                            // 创建KYC表索引
-                            db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_author ON p3d_kyc_info(author)`);
-                            db.run(`CREATE INDEX IF NOT EXISTS idx_kyc_block_height ON p3d_kyc_info(block_height)`);
+                            // 创建验证者数量表索引
+                            db.run(`CREATE INDEX IF NOT EXISTS idx_validator_block_height ON p3d_validator_count(block_height)`);
+                            db.run(`CREATE INDEX IF NOT EXISTS idx_validator_timestamp ON p3d_validator_count(timestamp)`);
                             
                             resolve();
                         }
                     });
+                }
+            });
                 }
             });
         });
@@ -208,6 +229,22 @@ function saveKycInfo(blockHeight, author, authorPublicKey, discord, display) {
                 // 将账号添加到已记录集合中
                 recordedAccounts.add(author);
                 resolve(this.lastID);
+            }
+        });
+    });
+}
+
+// 保存验证者数量到数据库
+function saveValidatorCount(blockHeight, validatorCount, timestamp) {
+    return new Promise((resolve, reject) => {
+        const sql = `INSERT OR REPLACE INTO p3d_validator_count (id, block_height, validator_count, timestamp) VALUES (?, ?, ?, ?)`;
+        db.run(sql, [blockHeight, blockHeight, validatorCount, timestamp], function(err) {
+            if (err) {
+                console.error(`保存验证者数量失败 (区块 #${blockHeight}):`, err);
+                reject(err);
+            } else {
+                console.log(`✅ 保存验证者数量: 区块 #${blockHeight}, 验证者数: ${validatorCount}`);
+                resolve();
             }
         });
     });
@@ -598,6 +635,15 @@ async function processBlock(api, height) {
         
         // 立即保存到数据库
         await saveBlockInfo(blockData);
+        
+        // 获取并保存验证者数量
+        try {
+            const validators = await api.query.validatorSet.validators();
+            const validatorCount = validators.length;
+            await saveValidatorCount(height, validatorCount, blockData.timestamp);
+        } catch (validatorError) {
+            console.debug(`获取验证者数量失败 #${height}:`, validatorError.message);
+        }
         
         // 处理KYC信息
         if (!argv['disable-kyc']) {
