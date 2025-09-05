@@ -3,16 +3,16 @@ module.exports = {
     {
       "name": "3dp-block-monitor-app",
       "script": "block-monitor.js",
-      "node_args": "--max-old-space-size=1280 --expose-gc --optimize-for-size --gc-interval=100",
+      "node_args": "--max-old-space-size=160 --expose-gc --optimize-for-size --gc-interval=100",
       "cwd": "./",
       "instances": 1,
       "autorestart": true,
       "watch": false,
-      "max_memory_restart": "1600M",
+      "max_memory_restart": "200M",
       "env": {
         "NODE_ENV": "production",
-        "NODE_OPTIONS": "--max-old-space-size=1280 --expose-gc --optimize-for-size --gc-interval=100",
-        "MEMORY_CONFIG": "{\"maxMemoryMB\":1600,\"maxOldSpaceSize\":4096,\"gcThreshold\":0.7,\"restartThreshold\":0.9,\"checkInterval\":30000,\"maxRestarts\":20,\"nodeArgs\":\"--max-old-space-size=4096 --expose-gc --optimize-for-size --gc-interval=100\"}"
+        "NODE_OPTIONS": "--max-old-space-size=160 --expose-gc --optimize-for-size --gc-interval=100",
+        "MEMORY_CONFIG": "{\"maxMemoryMB\":200,\"maxOldSpaceSize\":512,\"gcThreshold\":0.7,\"restartThreshold\":0.9,\"checkInterval\":30000,\"maxRestarts\":20,\"nodeArgs\":\"--max-old-space-size=512 --expose-gc --optimize-for-size --gc-interval=100\"}"
       },
       "time": true,
       "merge_logs": true,
@@ -22,22 +22,22 @@ module.exports = {
       "max_restarts": 20,
       "min_uptime": "10s",
       "monitoring": true,
-      "memory_threshold": "1440M"
+      "memory_threshold": "180M"
     },
     {
       "name": "3dp-block-monitor-web",
       "script": "web-server.js",
-      "node_args": "--max-old-space-size=640 --expose-gc --optimize-for-size",
+      "node_args": "--max-old-space-size=80 --expose-gc --optimize-for-size",
       "cwd": "./",
       "instances": 1,
       "autorestart": true,
       "watch": false,
-      "max_memory_restart": "800M",
+      "max_memory_restart": "100M",
       "env": {
         "NODE_ENV": "production",
         "PORT": 9070,
-        "NODE_OPTIONS": "--max-old-space-size=640 --expose-gc --optimize-for-size",
-        "MEMORY_CONFIG": "{\"maxMemoryMB\":800,\"maxOldSpaceSize\":2048,\"gcThreshold\":0.7,\"restartThreshold\":0.9,\"checkInterval\":60000,\"maxRestarts\":20,\"nodeArgs\":\"--max-old-space-size=2048 --expose-gc --optimize-for-size\"}"
+        "NODE_OPTIONS": "--max-old-space-size=80 --expose-gc --optimize-for-size",
+        "MEMORY_CONFIG": "{\"maxMemoryMB\":100,\"maxOldSpaceSize\":256,\"gcThreshold\":0.7,\"restartThreshold\":0.9,\"checkInterval\":60000,\"maxRestarts\":20,\"nodeArgs\":\"--max-old-space-size=256 --expose-gc --optimize-for-size\"}"
       },
       "time": true,
       "merge_logs": true,
@@ -47,7 +47,7 @@ module.exports = {
       "max_restarts": 20,
       "min_uptime": "5s",
       "monitoring": true,
-      "memory_threshold": "640M"
+      "memory_threshold": "80M"
     }
   ]
 };

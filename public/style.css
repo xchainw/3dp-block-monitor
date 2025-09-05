@@ -114,10 +114,19 @@ main {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
     margin-bottom: 30px;
     max-width: 100%;
+}
+
+/* 1080P显示器优化 - 确保6列显示 */
+@media (min-width: 1200px) {
+    .stats-grid {
+        grid-template-columns: repeat(6, 1fr);
+        max-width: 100%;
+        gap: 10px;
+    }
 }
 
 /* 大屏幕时固定6列显示 */
@@ -127,24 +136,24 @@ main {
         max-width: 1600px;
         margin-left: auto;
         margin-right: auto;
+        gap: 12px;
     }
 }
 
-/* 中等屏幕时显示5列 */
-@media (min-width: 1200px) and (max-width: 1399px) {
+/* 中等屏幕时显示4列 */
+@media (min-width: 900px) and (max-width: 1199px) {
     .stats-grid {
-        grid-template-columns: repeat(5, 1fr);
-        max-width: 1400px;
-        margin-left: auto;
-        margin-right: auto;
+        grid-template-columns: repeat(4, 1fr);
+        max-width: 100%;
+        gap: 10px;
     }
 }
 
 .stat-card {
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
-    border-radius: 16px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 15px;
     text-align: center;
     border: 1px solid rgba(255, 255, 255, 0.2);
     transition: all 0.3s ease;
@@ -157,15 +166,15 @@ main {
 }
 
 .stat-card h3 {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: #b8c5ff;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .stat-value {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: #ffffff;
     margin: 0;
@@ -765,19 +774,19 @@ footer p {
     
     .stats-grid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
+        gap: 10px;
     }
     
     .stat-card {
-        padding: 15px;
+        padding: 12px;
     }
     
     .stat-card h3 {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
     }
     
     .stat-value {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
     }
     
     .address-cell {
