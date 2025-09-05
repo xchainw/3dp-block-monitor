@@ -18,12 +18,20 @@ function loadMemoryConfigs() {
 
 // 生成PM2配置文件
 function generatePM2Config(memoryConfig) {
+    // 确保Node.js堆内存限制小于PM2重启限制，避免冲突
+    const backendMaxMemory = parseInt(memoryConfig.pm2.backend.max_memory_restart);
+    const webMaxMemory = parseInt(memoryConfig.pm2.web.max_memory_restart);
+    
+    // Node.js堆内存限制应该是PM2重启限制的80%，留出缓冲空间
+    const backendHeapLimit = Math.floor(backendMaxMemory * 0.8);
+    const webHeapLimit = Math.floor(webMaxMemory * 0.8);
+    
     const config = {
         apps: [
             {
                 name: '3dp-block-monitor-app',
                 script: 'block-monitor.js',
-                node_args: memoryConfig.backend.nodeArgs,
+                node_args: `--max-old-space-size=${backendHeapLimit} --expose-gc --optimize-for-size --gc-interval=100`,
                 cwd: './',
                 instances: 1,
                 autorestart: true,
@@ -31,7 +39,7 @@ function generatePM2Config(memoryConfig) {
                 max_memory_restart: memoryConfig.pm2.backend.max_memory_restart,
                 env: {
                     NODE_ENV: 'production',
-                    NODE_OPTIONS: memoryConfig.backend.nodeArgs,
+                    NODE_OPTIONS: `--max-old-space-size=${backendHeapLimit} --expose-gc --optimize-for-size --gc-interval=100`,
                     MEMORY_CONFIG: JSON.stringify(memoryConfig.backend)
                 },
                 time: true,
@@ -47,7 +55,7 @@ function generatePM2Config(memoryConfig) {
             {
                 name: '3dp-block-monitor-web',
                 script: 'web-server.js',
-                node_args: memoryConfig.web.nodeArgs,
+                node_args: `--max-old-space-size=${webHeapLimit} --expose-gc --optimize-for-size`,
                 cwd: './',
                 instances: 1,
                 autorestart: true,
@@ -56,7 +64,7 @@ function generatePM2Config(memoryConfig) {
                 env: {
                     NODE_ENV: 'production',
                     PORT: 9070,
-                    NODE_OPTIONS: memoryConfig.web.nodeArgs,
+                    NODE_OPTIONS: `--max-old-space-size=${webHeapLimit} --expose-gc --optimize-for-size`,
                     MEMORY_CONFIG: JSON.stringify(memoryConfig.web)
                 },
                 time: true,
@@ -79,16 +87,24 @@ function generatePM2Config(memoryConfig) {
 function showConfigInfo(configName, memoryConfig) {
     console.log(`\n📋 已选择配置: ${memoryConfig.name}`);
     console.log(`📝 描述: ${memoryConfig.description}`);
+    // 计算实际的内存限制
+    const backendMaxMemory = parseInt(memoryConfig.pm2.backend.max_memory_restart);
+    const webMaxMemory = parseInt(memoryConfig.pm2.web.max_memory_restart);
+    const backendHeapLimit = Math.floor(backendMaxMemory * 0.8);
+    const webHeapLimit = Math.floor(webMaxMemory * 0.8);
+    
     console.log('\n🔧 后端应用配置:');
-    console.log(`  最大内存: ${memoryConfig.backend.maxMemoryMB}MB`);
-    console.log(`  Node.js堆内存: ${memoryConfig.backend.maxOldSpaceSize}MB`);
+    console.log(`  PM2重启限制: ${backendMaxMemory}MB`);
+    console.log(`  Node.js堆内存: ${backendHeapLimit}MB (80%缓冲)`);
+    console.log(`  应用内存限制: ${memoryConfig.backend.maxMemoryMB}MB`);
     console.log(`  GC阈值: ${memoryConfig.backend.gcThreshold * 100}%`);
     console.log(`  重启阈值: ${memoryConfig.backend.restartThreshold * 100}%`);
     console.log(`  检查间隔: ${memoryConfig.backend.checkInterval / 1000}秒`);
     
     console.log('\n🌐 Web服务配置:');
-    console.log(`  最大内存: ${memoryConfig.web.maxMemoryMB}MB`);
-    console.log(`  Node.js堆内存: ${memoryConfig.web.maxOldSpaceSize}MB`);
+    console.log(`  PM2重启限制: ${webMaxMemory}MB`);
+    console.log(`  Node.js堆内存: ${webHeapLimit}MB (80%缓冲)`);
+    console.log(`  应用内存限制: ${memoryConfig.web.maxMemoryMB}MB`);
     console.log(`  GC阈值: ${memoryConfig.web.gcThreshold * 100}%`);
     console.log(`  重启阈值: ${memoryConfig.web.restartThreshold * 100}%`);
     console.log(`  检查间隔: ${memoryConfig.web.checkInterval / 1000}秒`);
